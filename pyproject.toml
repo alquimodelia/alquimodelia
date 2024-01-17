@@ -1,0 +1,75 @@
+[tool.poetry]
+name = "alquimodelia"
+version = "0.0.1"
+description = "Keras based Forescast model builder"
+authors = ["João Santos <jotaflame@gmail.com>"]
+readme = "README.md"
+license = "LICENSE"
+homepage = "https://github.com/alquimodelia/alquimodelia"
+repository = "https://github.com/alquimodelia/alquimodelia"
+documentation = "https://alquimodelia.github.io/alquimodelia/"
+keywords = ["python", "machine learning", "forecast", "model builder"]
+
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/alquimodelia/alquimodelia/issues"
+"Source Code" = "https://github.com/alquimodelia/alquimodelia"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+keras = ">=3"
+pandas = "*"
+numpy = "*"
+
+tensorflow = {version = "*", optional=true}
+jax = {version = "*", optional=true}
+pytorch = {version = "*", optional=true}
+
+[tool.poetry.extras]
+jax = ["jax", "jaxlib"]
+tensorflow = ["tensorflow"]
+torch = ["pytorch"]
+
+
+
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
+sphinx = "*"
+
+[tool.poetry.group.dev]
+optional = true
+
+[tool.poetry.group.dev.dependencies]
+poetry = "*"
+ruff = "*"
+black = "*"
+isort = "*"
+
+[tool.poetry.group.tests]
+optional = true
+
+[tool.poetry.group.tests.dependencies]
+pytest = "*"
+
+
+[build-system]
+requires = ["setuptools","poetry"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 79
+
+[tool.ruff]
+line-length = 79
+select = ["E", "F", "B", "Q"]
+show-fixes = true
+ignore = ["E501"]
+
+[tool.isort]
+multi_line_output = 3
+include_trailing_comma = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests",]
+pythonpath = ["."]

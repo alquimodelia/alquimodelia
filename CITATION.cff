@@ -1,0 +1,19 @@
+cff-version: 0.0.1
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Santos"
+  given-names: "João"
+  orcid: "https://orcid.org/0009-0007-5995-8060"
+title: "Alquimodelia: Alquimodelia"
+version: 0.0.1
+date-released: 2023-10-09
+url: "https://github.com/alquimodelia/alquimodelia"
+repository-code: "https://github.com/alquimodelia/alquimodelia"
+keywords:
+  - python
+  - machine learning
+  - forecast
+  - model builder
+type: software
+license: BSD-3-Clause
+license-url: "https://github.com/alquimodelia/alquimodelia/blob/main/LICENSE"
