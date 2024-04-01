@@ -1,7 +1,7 @@
 # Note that keras should only be imported after the backend
 # has been configured. The backend cannot be changed once the
 # package is imported.
-import ops
+from keras import ops
 
 def repeat_elem(tensor, rep):
     return ops.tile(tensor, [1, 1, rep])
