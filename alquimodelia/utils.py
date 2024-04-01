@@ -1,10 +1,14 @@
 # Note that keras should only be imported after the backend
 # has been configured. The backend cannot be changed once the
 # package is imported.
+import numpy as np
 from keras import ops
 
-def repeat_elem(tensor, rep):
-    return ops.tile(tensor, [1, 1, rep])
+
+def repeat_elem(tensor, rep, dimension_to_repeat=-1):
+    tile_shape = np.ones(len(tensor.shape) - 1)
+    tile_shape[dimension_to_repeat] = rep
+    return ops.tile(tensor, tile_shape)
 
 
 def count_number_divisions(size: int, count: int, by: int = 2, limit: int = 2):
