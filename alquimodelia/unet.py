@@ -1,98 +1,19 @@
-# This module is for internal use only, it should be in another
-#   package, specialized in images
-
 from functools import cached_property
 from typing import Any, Dict
 
-import keras as keras
-from keras import ops
+import keras
 from keras.layers import (
     Activation,
     Add,
     BatchNormalization,
-    Conv1D,
-    Conv1DTranspose,
     Cropping2D,
-    Dropout,
-    MaxPooling1D,
     Multiply,
-    Reshape,
-    UpSampling1D,
     concatenate,
 )
 from keras.src.legacy.backend import int_shape
 
-
-def count_number_divisions(size: int, count: int, by: int = 2, limit: int = 2):
-    """
-    Count the number of possible steps.
-
-    Parameters
-    ----------
-    size : int
-        Image size (considering it is a square).
-    count : int
-        Input must be 0.
-    by : int, optional
-        The factor by which the size is divided. Default is 2.
-    limit : int, optional
-        Size of last filter (smaller). Default is 2.
-
-    Returns
-    -------
-    int
-        The number of possible steps.
-    """
-    if size >= limit:
-        if size % 2 == 0:
-            count = count_number_divisions(
-                size / by, count + 1, by=by, limit=limit
-            )
-    else:
-        count = count - 1
-    return count
-
-
-class ModelMagia(keras.Model):
-    def model_input_shape(self):
-        raise NotImplementedError
-
-    def define_input_layer(self):
-        self.input_layer = keras.Input(self.model_input_shape)
-
-    def output_layer(self):
-        raise NotImplementedError
-
-    def get_last_layer_activation(self):
-        raise NotImplementedError
-
-    def __init__(
-        self,
-        timesteps: int = 0,
-        width: int = 0,
-        height: int = 0,
-        num_bands: int = 0,
-        num_classes: int = 0,
-        activation_final: str = "sigmoid",
-        data_format: str = "channels_last",
-    ):
-        self.num_classes = num_classes
-        self.timesteps = timesteps
-        self.width = width
-        self.height = height
-        self.num_bands = num_bands
-        self.activation_final = activation_final
-        self.data_format = data_format
-        self.define_input_layer()
-
-        super().__init__(
-            inputs=self.input_layer,
-            outputs=self.output_layer(),
-        )
-
-
-def repeat_elem(tensor, rep):
-    return ops.tile(tensor, [1, 1, rep])
+from alquimodelia.alquimodelia import ModelMagia
+from alquimodelia.utils import count_number_divisions, repeat_elem
 
 
 class UNet(ModelMagia):
@@ -110,6 +31,10 @@ class UNet(ModelMagia):
         activation_end: str = "softmax",
         kernel_initializer: str = "he_normal",
         dropout: float = 0.5,
+        attention: bool = False,
+        residual: bool = False,
+        dimensions_to_use=None,
+        spatial_dropout: bool = True,
         **kwargs,
     ):
         self._number_of_conv_layers = number_of_conv_layers
@@ -119,20 +44,78 @@ class UNet(ModelMagia):
         self.padding = padding
         self.padding_style = padding_style
         self.dropout = dropout
+        self.spatial_dropout = spatial_dropout
 
         self.activation_middle = activation_middle
         self.activation_end = activation_end
         self.kernel_initializer = kernel_initializer
+        self.attention = attention
+        self.residual = residual
+
+        self.dimensions_to_use = dimensions_to_use  # or ("T", "H", "W", "B")
+        self._dimensions_to_use = self.dimensions_to_use
+
         super().__init__(**kwargs)
+
+    def model_setup(self):
+        self.Conv = getattr(keras.layers, f"Conv{self.conv_dimension}D")
+        self.ConvTranspose = getattr(
+            keras.layers, f"Conv{self.conv_dimension}DTranspose"
+        )
+        self.MaxPooling = getattr(
+            keras.layers, f"MaxPooling{self.conv_dimension}D"
+        )
+        self.UpSampling = getattr(
+            keras.layers, f"UpSampling{self.conv_dimension}D"
+        )
+        if self.spatial_dropout:
+            self.Dropout = getattr(
+                keras.layers, f"SpatialDropout{self.conv_dimension}D"
+            )
+        else:
+            self.Dropout = keras.layers.Dropout
+
+    def get_input_layer(self):
+        return self.input_layer
+
+    @cached_property
+    def model_input_shape(self):
+        if self._dimensions_to_use:
+            self.dimensions_to_use = self._dimensions_to_use
+            # This is for a forced dimension use and order.
+            input_shape = []
+            for dim in self._dimensions_to_use:
+                if dim == "T":
+                    input_shape.append(self.x_timesteps)
+                if dim == "H":
+                    input_shape.append(self.x_height)
+                if dim == "W":
+                    input_shape.append(self.x_width)
+                if dim == "B":
+                    input_shape.append(self.num_features_to_train)
+        else:
+            # This defaults to (T, H, W, B). And any (not channels) equal to 1 is droped.
+            input_shape = [f for f in self.input_dimensions if f > 1]
+            if self.channels_dimension == 0:
+                input_shape.insert(0, self.num_features_to_train)
+            else:
+                input_shape.append(self.num_features_to_train)
+        # TODO: create the dimension_to_use atribute with the corret order
+
+        return input_shape
+
+    @cached_property
+    def conv_dimension(self):
+        # 1D, 2D, or 3D convulutions
+        return len(self.model_input_shape) - 1
 
     @cached_property
     def number_of_conv_layers(self):
         if self._number_of_conv_layers == 0:
             number_of_layers = []
-            if self.data_format == "channels_first":
-                study_shape = self.model_input_shape[1:]
-            elif self.data_format == "channels_last":
-                study_shape = self.model_input_shape[:-1]
+            study_shape = list(self.model_input_shape)
+            study_shape.pop(self.channels_dimension)
+            study_shape = tuple(study_shape)
             for size in study_shape:
                 number_of_layers.append(count_number_divisions(size, 0))
 
@@ -147,6 +130,27 @@ class UNet(ModelMagia):
         elif self.data_format == "channels_last":
             return "channels_first"
 
+    def residual_block(
+        self,
+        input_tensor,
+        x,
+        n_filters: int,
+        batchnorm: bool = True,
+        activation: str = "relu",
+    ):
+        # maybe a shortcut?
+        # https://www.youtube.com/watch?v=L5iV5BHkMzM
+        shortcut = self.Conv(n_filters, kernel_size=1, padding="same")(
+            input_tensor
+        )
+        if batchnorm is True:
+            shortcut = BatchNormalization()(shortcut)
+
+        # Residual connection
+        x = Add()([shortcut, x])
+        x = Activation(activation)(x)
+        return x
+
     def convolution_block(
         self,
         input_tensor,
@@ -157,6 +161,7 @@ class UNet(ModelMagia):
         padding: str = "same",
         activation: str = "relu",
         kernel_initializer: str = "he_normal",
+        residual: bool = False,
     ):
         # first layer
         x = self.Conv(
@@ -180,6 +185,11 @@ class UNet(ModelMagia):
         )(x)
         if batchnorm:
             x = BatchNormalization()(x)
+
+        if residual:
+            x = self.residual_block(
+                input_tensor, x, n_filters, batchnorm, activation
+            )
         return x
 
     def contracting_block(
@@ -193,6 +203,7 @@ class UNet(ModelMagia):
         data_format: str = "channels_last",
         padding: str = "same",
         activation: str = "relu",
+        residual: bool = False,
     ):
         c1 = self.convolution_block(
             input_img,
@@ -202,9 +213,10 @@ class UNet(ModelMagia):
             data_format=data_format,
             activation=activation,
             padding=padding,
+            residual=residual,
         )
         p1 = self.MaxPooling(strides, padding=padding)(c1)
-        p1 = self.SpatialDropout(dropout)(p1)
+        p1 = self.Dropout(dropout)(p1)
         return p1, c1
 
     def expansive_block(
@@ -219,7 +231,12 @@ class UNet(ModelMagia):
         data_format: str = "channels_first",
         activation: str = "relu",
         padding_style: str = "same",
+        attention: bool = False,
     ):
+        if attention:
+            gating = self.gating_signal(ci, n_filters, True)
+            cii = self.attention_block(cii, gating, n_filters)
+
         u = self.ConvTranspose(
             n_filters,
             kernel_size=kernel_size,
@@ -228,7 +245,7 @@ class UNet(ModelMagia):
             data_format=data_format,
         )(ci)
         u = concatenate([u, cii])
-        u = self.SpatialDropout(dropout)(u)
+        u = self.Dropout(dropout)(u)
         c = self.convolution_block(
             u,
             n_filters=n_filters,
@@ -280,9 +297,11 @@ class UNet(ModelMagia):
         activation_middle: str = "relu",
         kernel_size: int = 3,
         padding: str = "same",
+        residual: bool = False,
+        attention: bool = False,
     ):
         """Build deep neural network."""
-        input_img = self.input_layer
+        input_img = self.get_input_layer()
         # self.define_number_convolution_layers()
 
         contracting_arguments = {
@@ -293,6 +312,7 @@ class UNet(ModelMagia):
             "padding": padding,
             "data_format": data_format,
             "activation": activation_middle,
+            "residual": residual,
         }
         expansion_arguments = {
             "n_filters": n_filters,
@@ -301,6 +321,7 @@ class UNet(ModelMagia):
             "data_format": data_format,
             "activation": activation_middle,
             "kernel_size": kernel_size,
+            "attention": attention,
         }
 
         contracted_layers = self.contracting_loop(
@@ -371,9 +392,15 @@ class UNet(ModelMagia):
         psi = self.Conv(1, 1, padding="same")(act_xg)
         sigmoid_xg = Activation("sigmoid")(psi)
         shape_sigmoid = int_shape(sigmoid_xg)
+        # TODO: fix for multiple dimensions
         sss = (shape_x[1] // shape_sigmoid[1], shape_x[2] // shape_sigmoid[2])
-        upsample_psi = self.UpSampling(size=sss[0])(sigmoid_xg)  # 32
-        upsample_psi = repeat_elem(upsample_psi, shape_x[2])
+        # Upsampling here only acounts for a whole division,
+        # and with all dimension having that diference
+        upsample_psi = self.UpSampling(size=sss[0])(sigmoid_xg)
+        # If its only only there is not need to repeat the tensor, and the multiply will do this
+        if upsample_psi.shape[-1] != 1:
+            last_dim_ratio = int(x.shape[-1] / upsample_psi.shape[-1])
+            upsample_psi = repeat_elem(upsample_psi, last_dim_ratio)
 
         y = Multiply()([upsample_psi, x])
 
@@ -381,409 +408,66 @@ class UNet(ModelMagia):
         result_bn = BatchNormalization()(result)
         return result_bn
 
+    def define_output_layer(self):
+        outputDeep = self.deep_neural_network(
+            n_filters=self.n_filters,
+            dropout=self.dropout,
+            batchnorm=self.batchnorm,
+            data_format=self.data_format,
+            activation_middle=self.activation_middle,
+            kernel_size=self.kernel_size,
+            padding=self.padding_style,
+            attention=self.attention,
+            residual=self.residual,
+        )
+
+        if self.y_timesteps < self.x_timesteps:
+            # TODO: the channels 2st wont work training on CPU
+            # TODO: this might not work on all 1D, 2D...
+            # TODO: a transpose or reshape might be a better alternative if no GPU is available
+            # On torch it seems to work on CPU.
+            outputDeep = self.Conv(
+                self.y_timesteps,
+                self.kernel_size,
+                activation=self.activation_end,
+                data_format=self.opposite_data_format(),
+                padding=self.padding_style,
+            )(outputDeep)
+        # outputDeep = ops.transpose(outputDeep, axes=[0,4,2,3,1])
+
+        # new_shape = outputDeep.shape[1:]
+        # outputDeep = Reshape((new_shape[1], new_shape[0]))(outputDeep)
+
+        outputDeep = self.Conv(
+            self.num_classes,
+            self.kernel_size,
+            activation=self.activation_end,
+            data_format=self.data_format,
+            padding=self.padding_style,
+        )(outputDeep)
+
+        if self.padding > 0:
+            outputDeep = Cropping2D(
+                cropping=(
+                    (self.padding, self.padding),
+                    (self.padding, self.padding),
+                )
+            )(outputDeep)
+        self.output_layer = outputDeep
+        return outputDeep
+
 
 class AttResUNet(UNet):
-    def convolution_block(
+    def __init__(
         self,
-        input_tensor,
-        n_filters: int,
-        kernel_size: int = 3,
-        batchnorm: bool = True,
-        data_format: str = "channels_first",
-        padding: str = "same",
-        activation: str = "relu",
-        kernel_initializer: str = "he_normal",
+        **kwargs,
     ):
-        # first layer
-        x = self.Conv(
-            filters=n_filters,
-            kernel_size=kernel_size,
-            kernel_initializer=kernel_initializer,
-            padding=padding,
-            data_format=data_format,
-            activation=activation,
-        )(input_tensor)
-        if batchnorm:
-            x = BatchNormalization()(x)
-        # Second layer.
-        x = self.Conv(
-            filters=n_filters,
-            kernel_size=kernel_size,
-            kernel_initializer=kernel_initializer,
-            padding=padding,
-            data_format=data_format,
-            activation=activation,
-        )(x)
-        if batchnorm:
-            x = BatchNormalization()(x)
-
-        # maybe a shortcut?
-        # https://www.youtube.com/watch?v=L5iV5BHkMzM
-        shortcut = self.Conv(n_filters, kernel_size=1, padding="same")(
-            input_tensor
-        )
-        if batchnorm is True:
-            shortcut = BatchNormalization()(shortcut)
-
-        # Residual connection
-        x = Add()([shortcut, x])
-        x = Activation(activation)(x)
-        return x
-
-    def expansive_block(
-        self,
-        ci,
-        cii,
-        n_filters: int = 16,
-        batchnorm: bool = True,
-        dropout: float = 0.5,
-        kernel_size: int = 3,
-        strides: int = 2,
-        data_format: str = "channels_first",
-        activation: str = "relu",
-        padding_style: str = "same",
-    ):
-        gating = self.gating_signal(ci, n_filters, True)
-        att = self.attention_block(cii, gating, n_filters)
-
-        u = self.ConvTranspose(
-            n_filters,
-            kernel_size=kernel_size,
-            strides=strides,
-            padding=padding_style,
-            data_format=data_format,
-        )(ci)
-        u = concatenate([u, att])
-        u = self.SpatialDropout(dropout)(u)
-        c = self.convolution_block(
-            u,
-            n_filters=n_filters,
-            kernel_size=kernel_size,
-            batchnorm=batchnorm,
-            data_format=data_format,
-            activation=activation,
-            padding=padding_style,
-        )
-        return c
-
-    def expanding_loop(
-        self, contracted_layers, expansion_arguments: Dict[str, Any]
-    ):
-        list_c = [contracted_layers[-1]]
-        iterator_expanded_blocks = range(self.number_of_conv_layers)
-        iterator_contracted_blocks = reversed(iterator_expanded_blocks)
-        n_filters = expansion_arguments["n_filters"]
-        for i, c in zip(iterator_expanded_blocks, iterator_contracted_blocks):
-            filter_expansion = 2 ** (c)
-            expansion_arguments["n_filters"] = n_filters * filter_expansion
-
-            c4 = self.expansive_block(
-                list_c[i], contracted_layers[c], **expansion_arguments
-            )
-            list_c.append(c4)
-        return c4
+        super().__init__(**kwargs, attention=True, residual=True)
 
 
 class ResUNet(UNet):
-    def convolution_block(
-        self,
-        input_tensor,
-        n_filters: int,
-        kernel_size: int = 3,
-        batchnorm: bool = True,
-        data_format: str = "channels_first",
-        padding: str = "same",
-        activation: str = "relu",
-        kernel_initializer: str = "he_normal",
-    ):
-        # first layer
-        x = self.Conv(
-            filters=n_filters,
-            kernel_size=kernel_size,
-            kernel_initializer=kernel_initializer,
-            padding=padding,
-            data_format=data_format,
-            activation=activation,
-        )(input_tensor)
-        if batchnorm:
-            x = BatchNormalization()(x)
-        # Second layer.
-        x = self.Conv(
-            filters=n_filters,
-            kernel_size=kernel_size,
-            kernel_initializer=kernel_initializer,
-            padding=padding,
-            data_format=data_format,
-            activation=activation,
-        )(x)
-        if batchnorm:
-            x = BatchNormalization()(x)
-
-        # maybe a shortcut?
-        # https://www.youtube.com/watch?v=L5iV5BHkMzM
-        shortcut = self.Conv(n_filters, kernel_size=1, padding="same")(
-            input_tensor
-        )
-        if batchnorm is True:
-            shortcut = BatchNormalization()(shortcut)
-        # Residual connection
-
-        x = Add()([shortcut, x])
-        x = Activation(activation)(x)
-        return x
-
-
-class UNet1D(UNet):
     def __init__(
         self,
         **kwargs,
     ):
-        self.Conv = Conv1D
-        self.ConvTranspose = Conv1DTranspose
-        self.SpatialDropout = Dropout
-        self.MaxPooling = MaxPooling1D
-        self.UpSampling = UpSampling1D
-        kwargs["timesteps"] = 1
-        self.data_format = kwargs["data_format"]
-        super().__init__(**kwargs)
-
-    @cached_property
-    def model_input_shape(self):
-        if self.data_format == "channels_first":
-            return (self.num_bands, self.width)
-        elif self.data_format == "channels_last":
-            return (self.width, self.num_bands)
-
-    def output_layer(self):
-        outputDeep = self.deep_neural_network(
-            n_filters=self.n_filters,
-            dropout=self.dropout,
-            batchnorm=self.batchnorm,
-            data_format=self.data_format,
-            activation_middle=self.activation_middle,
-            kernel_size=self.kernel_size,
-            padding=self.padding_style,
-            # num_classes=self.num_classes,
-        )
-        outputDeep = self.Conv(
-            24,
-            self.kernel_size,
-            activation=self.activation_end,
-            data_format=self.data_format,
-            padding=self.padding_style,
-        )(outputDeep)
-
-        new_shape = outputDeep.shape[1:]
-        outputDeep = Reshape((new_shape[1], new_shape[0]))(outputDeep)
-
-        outputDeep = self.Conv(
-            self.num_classes,
-            self.kernel_size,
-            activation=self.activation_end,
-            data_format=self.data_format,
-            padding=self.padding_style,
-        )(outputDeep)
-
-        if self.padding > 0:
-            outputDeep = Cropping2D(
-                cropping=(
-                    (self.padding, self.padding),
-                    (self.padding, self.padding),
-                )
-            )(outputDeep)
-        self.output_layer = outputDeep
-        return outputDeep
-
-
-class AttResUNet1DBroad(AttResUNet):
-    def __init__(
-        self,
-        **kwargs,
-    ):
-        self.Conv = Conv1D
-        self.ConvTranspose = Conv1DTranspose
-        self.SpatialDropout = Dropout
-        self.MaxPooling = MaxPooling1D
-        self.UpSampling = UpSampling1D
-
-        kwargs["timesteps"] = 1
-        self.data_format = kwargs["data_format"]
-        super().__init__(**kwargs)
-
-    @cached_property
-    def model_input_shape(self):
-        if self.data_format == "channels_first":
-            return (self.num_bands, self.width)
-        elif self.data_format == "channels_last":
-            return (self.width, self.num_bands)
-
-    def convolution_block(
-        self,
-        input_tensor,
-        n_filters: int,
-        kernel_size: int = 3,
-        batchnorm: bool = True,
-        data_format: str = "channels_first",
-        padding: str = "same",
-        activation: str = "relu",
-        kernel_initializer: str = "he_normal",
-    ):
-        # first layer
-        x = self.Conv(
-            filters=n_filters,
-            kernel_size=kernel_size,
-            kernel_initializer=kernel_initializer,
-            padding=padding,
-            data_format=data_format,
-            activation=activation,
-        )(input_tensor)
-        if batchnorm:
-            x = BatchNormalization()(x)
-
-        paralel_convs = []
-        for i in [3, 8, 12, 24, 48, 24 * 3, 24 * 7]:
-            if i > self.width:
-                continue
-            # parale layer.
-            xi = self.Conv(
-                filters=n_filters,
-                kernel_size=i,
-                kernel_initializer=kernel_initializer,
-                padding=padding,
-                data_format=data_format,
-                activation=activation,
-            )(x)
-            if batchnorm:
-                xi = BatchNormalization()(xi)
-            paralel_convs.append(xi)
-
-        u = concatenate(paralel_convs)
-        u = self.SpatialDropout(self.dropout)(u)
-
-        # Second layer.
-        x = self.Conv(
-            filters=n_filters,
-            kernel_size=kernel_size,
-            kernel_initializer=kernel_initializer,
-            padding=padding,
-            data_format=data_format,
-            activation=activation,
-        )(u)
-        if batchnorm:
-            x = BatchNormalization()(x)
-
-        # maybe a shortcut?
-        # https://www.youtube.com/watch?v=L5iV5BHkMzM
-        shortcut = self.Conv(n_filters, kernel_size=1, padding="same")(
-            input_tensor
-        )
-        if batchnorm is True:
-            shortcut = BatchNormalization()(shortcut)
-        # Residual connection
-
-        x = Add()([shortcut, x])
-        x = Activation(activation)(x)
-        return x
-
-    def output_layer(self):
-        outputDeep = self.deep_neural_network(
-            n_filters=self.n_filters,
-            dropout=self.dropout,
-            batchnorm=self.batchnorm,
-            data_format=self.data_format,
-            activation_middle=self.activation_middle,
-            kernel_size=self.kernel_size,
-            padding=self.padding_style,
-            # num_classes=self.num_classes,
-        )
-        outputDeep = self.Conv(
-            24,
-            self.kernel_size,
-            activation=self.activation_end,
-            data_format=self.data_format,
-            padding=self.padding_style,
-        )(outputDeep)
-
-        new_shape = outputDeep.shape[1:]
-        outputDeep = Reshape((new_shape[1], new_shape[0]))(outputDeep)
-
-        outputDeep = self.Conv(
-            self.num_classes,
-            self.kernel_size,
-            activation=self.activation_end,
-            data_format=self.data_format,
-            padding=self.padding_style,
-        )(outputDeep)
-
-        if self.padding > 0:
-            outputDeep = Cropping2D(
-                cropping=(
-                    (self.padding, self.padding),
-                    (self.padding, self.padding),
-                )
-            )(outputDeep)
-        self.output_layer = outputDeep
-        return outputDeep
-
-
-class AttResUNet1D(AttResUNet):
-    def __init__(
-        self,
-        **kwargs,
-    ):
-        self.Conv = Conv1D
-        self.ConvTranspose = Conv1DTranspose
-        self.SpatialDropout = Dropout
-        self.MaxPooling = MaxPooling1D
-        self.UpSampling = UpSampling1D
-
-        kwargs["timesteps"] = 1
-        self.data_format = kwargs["data_format"]
-        super().__init__(**kwargs)
-
-    @cached_property
-    def model_input_shape(self):
-        if self.data_format == "channels_first":
-            return (self.num_bands, self.width)
-        elif self.data_format == "channels_last":
-            return (self.width, self.num_bands)
-
-    def output_layer(self):
-        outputDeep = self.deep_neural_network(
-            n_filters=self.n_filters,
-            dropout=self.dropout,
-            batchnorm=self.batchnorm,
-            data_format=self.data_format,
-            activation_middle=self.activation_middle,
-            kernel_size=self.kernel_size,
-            padding=self.padding_style,
-            # num_classes=self.num_classes,
-        )
-        outputDeep = self.Conv(
-            24,
-            self.kernel_size,
-            activation=self.activation_end,
-            data_format=self.data_format,
-            padding=self.padding_style,
-        )(outputDeep)
-
-        new_shape = outputDeep.shape[1:]
-        outputDeep = Reshape((new_shape[1], new_shape[0]))(outputDeep)
-
-        outputDeep = self.Conv(
-            self.num_classes,
-            self.kernel_size,
-            activation=self.activation_end,
-            data_format=self.data_format,
-            padding=self.padding_style,
-        )(outputDeep)
-
-        if self.padding > 0:
-            outputDeep = Cropping2D(
-                cropping=(
-                    (self.padding, self.padding),
-                    (self.padding, self.padding),
-                )
-            )(outputDeep)
-        self.output_layer = outputDeep
-        return outputDeep
+        super().__init__(**kwargs, residual=True)
