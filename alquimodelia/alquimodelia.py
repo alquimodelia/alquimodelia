@@ -1,71 +1,42 @@
-import keras
-from keras.models import Model
+import inspect
+
+from alquimodelia.builders import UNet
 
 
 class ModelMagia:
-    def model_input_shape(self):
-        raise NotImplementedError
+    registry = dict()
 
-    def define_input_layer(self):
-        self.input_layer = keras.Input(self.model_input_shape)
+    def __init__(self):
+        pass
 
-    def define_output_layer(self):
-        raise NotImplementedError
+    def __new__(cls, model_arch, **kwargs):
+        # Dynamically create an instance of the specified model class
+        model_arch = model_arch.lower()
+        model_class = ModelMagia.registry[model_arch]
+        instance = super().__new__(model_class)
+        # Inspect the __init__ method of the model class to get its parameters
+        init_params = inspect.signature(cls.__init__).parameters
+        # Separate kwargs based on the parameters expected by the model's __init__
+        tineye_kwargs = {k: v for k, v in kwargs.items() if k in init_params}
+        model_kwargs = {
+            k: v for k, v in kwargs.items() if k not in init_params
+        }
 
-    def get_last_layer_activation(self):
-        raise NotImplementedError
+        for name, method in cls.__dict__.items():
+            if "__" in name:
+                continue
+            if callable(method) and hasattr(instance, name):
+                instance.__dict__[name] = method.__get__(instance, cls)
 
-    def model_setup(self):
-        raise NotImplementedError
+        instance.__init__(**model_kwargs)
+        cls.__init__(instance, **tineye_kwargs)
 
-    def __init__(
-        self,
-        timesteps: int = 1,
-        height: int = 1,
-        width: int = 1,
-        num_features_to_train: int = 1,
-        num_classes: int = 1,
-        x_timesteps: int = None,
-        x_height: int = None,
-        x_width: int = None,
-        y_timesteps: int = None,
-        y_height: int = None,
-        y_width: int = None,
-        activation_final: str = "sigmoid",
-        data_format: str = "channels_last",
-        **kwargs,
-    ):
-        # shape (N, T, H, W, C)
-        self.x_timesteps = x_timesteps or timesteps
-        self.x_height = x_height or height
-        self.x_width = x_width or width
-        self.num_features_to_train = num_features_to_train  # channels
-        self.input_dimensions = (self.x_timesteps, self.x_height, self.x_width)
-        self.input_dimensions_channels = (
-            *self.input_dimensions,
-            self.num_features_to_train,
-        )
+        return instance
 
-        self.y_timesteps = y_timesteps or timesteps
-        self.y_height = y_height or height
-        self.y_width = y_width or width
-        self.num_classes = num_classes
-        self.output_dimensions = (
-            self.y_timesteps,
-            self.y_height,
-            self.y_width,
-        )
+    @staticmethod
+    def register(constructor):
+        # TODO: only register if its a BaseModel subclass
+        ModelMagia.registry[constructor.__name__.lower()] = constructor
 
-        self.activation_final = activation_final
-        self.data_format = data_format
-        if self.data_format == "channels_first":
-            self.channels_dimension = 0
-        elif self.data_format == "channels_last":
-            self.channels_dimension = -1
 
-        self.model_setup()
-        self.define_input_layer()
-        self.define_output_layer()
-        self.model = Model(
-            inputs=self.input_layer, outputs=self.output_layer, **kwargs
-        )
+ModelMagia.register(UNet)
