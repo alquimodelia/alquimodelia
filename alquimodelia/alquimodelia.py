@@ -17,7 +17,9 @@ class ModelMagia:
         # Inspect the __init__ method of the model class to get its parameters
         init_params = inspect.signature(cls.__init__).parameters
         # Separate kwargs based on the parameters expected by the model's __init__
-        tineye_kwargs = {k: v for k, v in kwargs.items() if k in init_params}
+        modelmagia_kwargs = {
+            k: v for k, v in kwargs.items() if k in init_params
+        }
         model_kwargs = {
             k: v for k, v in kwargs.items() if k not in init_params
         }
@@ -29,7 +31,7 @@ class ModelMagia:
                 instance.__dict__[name] = method.__get__(instance, cls)
 
         instance.__init__(**model_kwargs)
-        cls.__init__(instance, **tineye_kwargs)
+        cls.__init__(instance, **modelmagia_kwargs)
 
         return instance
 
