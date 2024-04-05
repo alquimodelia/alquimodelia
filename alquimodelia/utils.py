@@ -5,6 +5,19 @@ import numpy as np
 from keras import ops
 
 
+def adjust_to_multiple(varA, varB):
+    if varA % varB == 0:
+        return varA
+    else:
+        return round(varA / varB) * varB
+
+def max_if_not_bigger(n1, n2):
+    if n2 > n1:
+        return n1
+    else:
+        return max(n2, n1)
+
+
 def repeat_elem(tensor, rep, dimension_to_repeat=-1):
     tile_shape = np.ones(len(tensor.shape) - 1)
     tile_shape[dimension_to_repeat] = rep

@@ -12,11 +12,11 @@ from keras.layers import (
 )
 from keras.src.legacy.backend import int_shape
 
-from alquimodelia.alquimodelia import ModelMagia
+from alquimodelia.builders.base_builder import BaseBuilder
 from alquimodelia.utils import count_number_divisions, repeat_elem
 
 
-class UNet(ModelMagia):
+class UNet(BaseBuilder):
     """Base classe for Unet models."""
 
     def __init__(
