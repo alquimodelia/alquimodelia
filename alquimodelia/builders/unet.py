@@ -79,7 +79,10 @@ class UNet(BaseBuilder):
             self.Dropout = keras.layers.Dropout
 
     def get_input_layer(self):
-        return self.input_layer
+        input_layer = self.input_layer
+        if self.batchnorm:
+            input_layer = BatchNormalization()(input_layer)
+        return input_layer
 
     @cached_property
     def model_input_shape(self):
@@ -293,6 +296,7 @@ class UNet(BaseBuilder):
 
     def deep_neural_network(
         self,
+        input_img,
         n_filters: int = 16,
         dropout: float = 0.2,
         batchnorm: bool = True,
@@ -304,8 +308,6 @@ class UNet(BaseBuilder):
         attention: bool = False,
     ):
         """Build deep neural network."""
-        input_img = self.get_input_layer()
-        # self.define_number_convolution_layers()
 
         contracting_arguments = {
             "n_filters": n_filters,
@@ -426,9 +428,11 @@ class UNet(BaseBuilder):
             )(outputDeep)
         return outputDeep
 
-    def define_output_layer(self):
+    def define_model(self):
+        input_img = self.get_input_layer()
         # Output of the neural network
         outputDeep = self.deep_neural_network(
+            input_img=input_img,
             n_filters=self.n_filters,
             dropout=self.dropout,
             batchnorm=self.batchnorm,
@@ -439,7 +443,10 @@ class UNet(BaseBuilder):
             attention=self.attention,
             residual=self.residual,
         )
+        self.last_arch_layer = outputDeep
 
+    def define_output_layer(self):
+        outputDeep = self.last_arch_layer
         # "Time" dimension colapse (or expansion)
         if self.y_timesteps < self.x_timesteps:
             # TODO: the channels 2st wont work training on CPU
