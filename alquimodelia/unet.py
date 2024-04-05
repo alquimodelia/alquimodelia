@@ -35,6 +35,7 @@ class UNet(ModelMagia):
         residual: bool = False,
         dimensions_to_use=None,
         spatial_dropout: bool = True,
+        classes_method: str = "Conv",
         **kwargs,
     ):
         self._number_of_conv_layers = number_of_conv_layers
@@ -54,6 +55,8 @@ class UNet(ModelMagia):
 
         self.dimensions_to_use = dimensions_to_use  # or ("T", "H", "W", "B")
         self._dimensions_to_use = self.dimensions_to_use
+
+        self.classes_method = classes_method  # Dense || Conv
 
         super().__init__(**kwargs)
 
@@ -408,7 +411,23 @@ class UNet(ModelMagia):
         result_bn = BatchNormalization()(result)
         return result_bn
 
+    def classes_collapse(self, outputDeep):
+        if self.classes_method == "Conv":
+            outputDeep = self.Conv(
+                self.num_classes,
+                self.kernel_size,
+                activation=self.activation_end,
+                data_format=self.data_format,
+                padding=self.padding_style,
+            )(outputDeep)
+        elif self.classes_method == "Dense":
+            outputDeep = keras.layers.Dense(
+                units=self.num_classes, activation=self.activation_end
+            )(outputDeep)
+        return outputDeep
+
     def define_output_layer(self):
+        # Output of the neural network
         outputDeep = self.deep_neural_network(
             n_filters=self.n_filters,
             dropout=self.dropout,
@@ -421,6 +440,7 @@ class UNet(ModelMagia):
             residual=self.residual,
         )
 
+        # "Time" dimension colapse (or expansion)
         if self.y_timesteps < self.x_timesteps:
             # TODO: the channels 2st wont work training on CPU
             # TODO: this might not work on all 1D, 2D...
@@ -438,14 +458,10 @@ class UNet(ModelMagia):
         # new_shape = outputDeep.shape[1:]
         # outputDeep = Reshape((new_shape[1], new_shape[0]))(outputDeep)
 
-        outputDeep = self.Conv(
-            self.num_classes,
-            self.kernel_size,
-            activation=self.activation_end,
-            data_format=self.data_format,
-            padding=self.padding_style,
-        )(outputDeep)
+        # Classes colapse (or expansion)
+        outputDeep = self.classes_collapse(outputDeep)
 
+        # TODO: croping should be in a different function to treat output
         if self.padding > 0:
             outputDeep = Cropping2D(
                 cropping=(
