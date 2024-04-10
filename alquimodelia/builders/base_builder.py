@@ -3,6 +3,10 @@ from keras.models import Model
 
 
 class BaseBuilder:
+    # Define a self so subclasses can overwrite with inputs having other names (TinEye bands -> num_features_to_train)
+    num_features_to_train = None
+    num_classes = None
+
     def model_input_shape(self):
         raise NotImplementedError
 
@@ -54,7 +58,9 @@ class BaseBuilder:
         self.x_timesteps = x_timesteps or timesteps
         self.x_height = x_height or height
         self.x_width = x_width or width
-        self.num_features_to_train = num_features_to_train  # channels
+        self.num_features_to_train = (
+            self.num_features_to_train or num_features_to_train
+        )  # channels
         self.input_dimensions = (self.x_timesteps, self.x_height, self.x_width)
         self.input_dimensions_channels = (
             *self.input_dimensions,
@@ -64,7 +70,7 @@ class BaseBuilder:
         self.y_timesteps = y_timesteps or timesteps
         self.y_height = y_height or height
         self.y_width = y_width or width
-        self.num_classes = num_classes
+        self.num_classes = self.num_classes or num_classes
         self.output_dimensions = (
             self.y_timesteps,
             self.y_height,

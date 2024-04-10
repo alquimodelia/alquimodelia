@@ -1,6 +1,6 @@
 import inspect
 
-from alquimodelia.builders import UNet
+from alquimodelia.builders import Transformer, UNet
 
 
 class ModelMagia:
@@ -30,8 +30,8 @@ class ModelMagia:
             if callable(method) and hasattr(instance, name):
                 instance.__dict__[name] = method.__get__(instance, cls)
 
-        instance.__init__(**model_kwargs)
         cls.__init__(instance, **modelmagia_kwargs)
+        instance.__init__(**model_kwargs)
 
         return instance
 
@@ -42,3 +42,4 @@ class ModelMagia:
 
 
 ModelMagia.register(UNet)
+ModelMagia.register(Transformer)
