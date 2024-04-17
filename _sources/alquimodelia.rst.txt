@@ -1,0 +1,69 @@
+alquimodelia package
+====================
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   alquimodelia.builders
+
+Submodules
+----------
+
+alquimodelia.alquimodelia module
+--------------------------------
+
+.. automodule:: alquimodelia.alquimodelia
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+alquimodelia.archs module
+-------------------------
+
+.. automodule:: alquimodelia.archs
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+alquimodelia.models\_definitions module
+---------------------------------------
+
+.. automodule:: alquimodelia.models_definitions
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+alquimodelia.something module
+-----------------------------
+
+.. automodule:: alquimodelia.something
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+alquimodelia.transformer module
+-------------------------------
+
+.. automodule:: alquimodelia.transformer
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+alquimodelia.utils module
+-------------------------
+
+.. automodule:: alquimodelia.utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: alquimodelia
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,37 @@
+alquimodelia.builders package
+=============================
+
+Submodules
+----------
+
+alquimodelia.builders.base\_builder module
+------------------------------------------
+
+.. automodule:: alquimodelia.builders.base_builder
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+alquimodelia.builders.transformer module
+----------------------------------------
+
+.. automodule:: alquimodelia.builders.transformer
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+alquimodelia.builders.unet module
+---------------------------------
+
+.. automodule:: alquimodelia.builders.unet
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: alquimodelia.builders
+   :members:
+   :undoc-members:
+   :show-inheritance:
