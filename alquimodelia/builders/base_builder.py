@@ -30,9 +30,6 @@ class BaseBuilder:
         # it should define self.output_layer
         raise NotImplementedError
 
-    def get_last_layer_activation(self):
-        raise NotImplementedError
-
     def model_setup(self):
         # Any needed setup before building and conecting the layers
         raise NotImplementedError
