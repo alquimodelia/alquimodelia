@@ -2,14 +2,7 @@ from functools import cached_property
 from typing import Any, Dict
 
 import keras
-from keras.layers import (
-    Activation,
-    Add,
-    BatchNormalization,
-    Cropping2D,
-    Multiply,
-    concatenate,
-)
+from keras.layers import Activation, Add, Cropping2D, Multiply, concatenate
 from keras.src.legacy.backend import int_shape
 
 from alquimodelia.builders.base_builder import BaseBuilder
@@ -24,7 +17,7 @@ class UNet(BaseBuilder):
         n_filters: int = 16,
         number_of_conv_layers: int = 0,
         kernel_size: int = 3,
-        batchnorm: bool = True,
+        normalization: bool = True,
         padding_style: str = "same",
         padding: int = 0,
         activation_middle: str = "relu",
@@ -41,7 +34,7 @@ class UNet(BaseBuilder):
         self._number_of_conv_layers = number_of_conv_layers
         self.n_filters = n_filters
         self.kernel_size = kernel_size
-        self.batchnorm = batchnorm
+        self.normalization = normalization
         self.padding = padding
         self.padding_style = padding_style
         self.dropout = dropout
@@ -80,8 +73,8 @@ class UNet(BaseBuilder):
 
     def get_input_layer(self):
         input_layer = self.input_layer
-        if self.batchnorm:
-            input_layer = BatchNormalization()(input_layer)
+        if self.normalization:
+            input_layer = self.normalization()(input_layer)
         return input_layer
 
     @cached_property
@@ -141,7 +134,7 @@ class UNet(BaseBuilder):
         input_tensor,
         x,
         n_filters: int,
-        batchnorm: bool = True,
+        normalization: bool = True,
         activation: str = "relu",
     ):
         # maybe a shortcut?
@@ -149,8 +142,8 @@ class UNet(BaseBuilder):
         shortcut = self.Conv(n_filters, kernel_size=1, padding="same")(
             input_tensor
         )
-        if batchnorm is True:
-            shortcut = BatchNormalization()(shortcut)
+        if normalization is True:
+            shortcut = self.normalization()(shortcut)
 
         # Residual connection
         x = Add()([shortcut, x])
@@ -162,7 +155,7 @@ class UNet(BaseBuilder):
         input_tensor,
         n_filters: int,
         kernel_size: int = 3,
-        batchnorm: bool = True,
+        normalization: bool = True,
         data_format: str = "channels_first",
         padding: str = "same",
         activation: str = "relu",
@@ -178,8 +171,8 @@ class UNet(BaseBuilder):
             data_format=data_format,
             activation=activation,
         )(input_tensor)
-        if batchnorm:
-            x = BatchNormalization()(x)
+        if normalization:
+            x = self.normalization()(x)
         # Second layer.
         x = self.Conv(
             filters=n_filters,
@@ -189,12 +182,12 @@ class UNet(BaseBuilder):
             data_format=data_format,
             activation=activation,
         )(x)
-        if batchnorm:
-            x = BatchNormalization()(x)
+        if normalization:
+            x = self.normalization()(x)
 
         if residual:
             x = self.residual_block(
-                input_tensor, x, n_filters, batchnorm, activation
+                input_tensor, x, n_filters, normalization, activation
             )
         return x
 
@@ -202,7 +195,7 @@ class UNet(BaseBuilder):
         self,
         input_img,
         n_filters: int = 16,
-        batchnorm: bool = True,
+        normalization: bool = True,
         dropout: float = 0.25,
         kernel_size: int = 3,
         strides: int = 2,
@@ -215,7 +208,7 @@ class UNet(BaseBuilder):
             input_img,
             n_filters=n_filters,
             kernel_size=kernel_size,
-            batchnorm=batchnorm,
+            normalization=normalization,
             data_format=data_format,
             activation=activation,
             padding=padding,
@@ -230,7 +223,7 @@ class UNet(BaseBuilder):
         ci,
         cii,
         n_filters: int = 16,
-        batchnorm: bool = True,
+        normalization: bool = True,
         dropout: float = 0.5,
         kernel_size: int = 3,
         strides: int = 2,
@@ -256,7 +249,7 @@ class UNet(BaseBuilder):
             u,
             n_filters=n_filters,
             kernel_size=kernel_size,
-            batchnorm=batchnorm,
+            normalization=normalization,
             data_format=data_format,
             activation=activation,
             padding=padding_style,
@@ -299,7 +292,7 @@ class UNet(BaseBuilder):
         input_img,
         n_filters: int = 16,
         dropout: float = 0.2,
-        batchnorm: bool = True,
+        normalization: bool = True,
         data_format: str = "channels_last",
         activation_middle: str = "relu",
         kernel_size: int = 3,
@@ -311,7 +304,7 @@ class UNet(BaseBuilder):
 
         contracting_arguments = {
             "n_filters": n_filters,
-            "batchnorm": batchnorm,
+            "normalization": normalization,
             "dropout": dropout,
             "kernel_size": kernel_size,
             "padding": padding,
@@ -321,7 +314,7 @@ class UNet(BaseBuilder):
         }
         expansion_arguments = {
             "n_filters": n_filters,
-            "batchnorm": batchnorm,
+            "normalization": normalization,
             "dropout": dropout,
             "data_format": data_format,
             "activation": activation_middle,
@@ -369,7 +362,7 @@ class UNet(BaseBuilder):
             activation="relu",
         )(input_tensor)
 
-        x = BatchNormalization()(x)
+        x = self.normalization()(x)
         return x
 
     def attention_block(self, x, gating, inter_shape):
@@ -410,7 +403,7 @@ class UNet(BaseBuilder):
         y = Multiply()([upsample_psi, x])
 
         result = self.Conv(shape_x[2], 1, padding="same")(y)
-        result_bn = BatchNormalization()(result)
+        result_bn = self.normalization()(result)
         return result_bn
 
     def classes_collapse(self, outputDeep):
@@ -435,7 +428,7 @@ class UNet(BaseBuilder):
             input_img=input_img,
             n_filters=self.n_filters,
             dropout=self.dropout,
-            batchnorm=self.batchnorm,
+            normalization=self.normalization,
             data_format=self.data_format,
             activation_middle=self.activation_middle,
             kernel_size=self.kernel_size,

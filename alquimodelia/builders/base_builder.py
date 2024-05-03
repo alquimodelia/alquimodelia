@@ -1,4 +1,5 @@
 import keras
+from keras.layers import BatchNormalization, Layer
 from keras.models import Model
 
 
@@ -16,7 +17,10 @@ class BaseBuilder:
 
     def get_input_layer(self):
         # This is to get the layer to enter the arch, here you can add augmentation or other processing
-        return self.input_layer
+        input_layer = self.input_layer
+        if self.normalization:
+            input_layer = self.normalization()(input_layer)
+        return input_layer
 
     def define_model(self):
         # This is the model definition and it must return the output_layer of the architeture. which can be modified further
@@ -49,6 +53,7 @@ class BaseBuilder:
         y_width: int = None,
         activation_final: str = "sigmoid",
         data_format: str = "channels_last",
+        normalization: Layer = None,  # The normalization Layer to apply
         **kwargs,
     ):
         # shape (N, T, H, W, C)
@@ -80,6 +85,10 @@ class BaseBuilder:
             self.channels_dimension = 0
         elif self.data_format == "channels_last":
             self.channels_dimension = -1
+
+        if normalization is None:
+            normalization = BatchNormalization
+        self.normalization = normalization
 
         self.model_setup()
         self.define_input_layer()
