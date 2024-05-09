@@ -23,7 +23,6 @@ class UNet(BaseBuilder):
         activation_middle: str = "relu",
         activation_end: str = "softmax",
         kernel_initializer: str = "he_normal",
-        dropout: float = 0.5,
         attention: bool = False,
         residual: bool = False,
         spatial_dropout: bool = True,
@@ -36,7 +35,6 @@ class UNet(BaseBuilder):
         self.normalization = normalization
         self.padding = padding
         self.padding_style = padding_style
-        self.dropout = dropout
         self.spatial_dropout = spatial_dropout
 
         self.activation_middle = activation_middle
@@ -160,7 +158,7 @@ class UNet(BaseBuilder):
         input_img,
         n_filters: int = 16,
         normalization: bool = True,
-        dropout: float = 0.25,
+        dropout_rate: float = 0.25,
         kernel_size: int = 3,
         strides: int = 2,
         data_format: str = "channels_last",
@@ -179,7 +177,7 @@ class UNet(BaseBuilder):
             residual=residual,
         )
         p1 = self.MaxPooling(strides, padding=padding)(c1)
-        p1 = self.Dropout(dropout)(p1)
+        p1 = self.Dropout(dropout_rate)(p1)
         return p1, c1
 
     def expansive_block(
@@ -188,7 +186,7 @@ class UNet(BaseBuilder):
         cii,
         n_filters: int = 16,
         normalization: bool = True,
-        dropout: float = 0.5,
+        dropout_rate: float = 0.5,
         kernel_size: int = 3,
         strides: int = 2,
         data_format: str = "channels_first",
@@ -208,7 +206,7 @@ class UNet(BaseBuilder):
             data_format=data_format,
         )(ci)
         u = concatenate([u, cii])
-        u = self.Dropout(dropout)(u)
+        u = self.Dropout(dropout_rate)(u)
         c = self.convolution_block(
             u,
             n_filters=n_filters,
@@ -255,7 +253,7 @@ class UNet(BaseBuilder):
         self,
         input_img,
         n_filters: int = 16,
-        dropout: float = 0.2,
+        dropout_rate: float = 0.2,
         normalization: bool = True,
         data_format: str = "channels_last",
         activation_middle: str = "relu",
@@ -269,7 +267,7 @@ class UNet(BaseBuilder):
         contracting_arguments = {
             "n_filters": n_filters,
             "normalization": normalization,
-            "dropout": dropout,
+            "dropout_rate": dropout_rate,
             "kernel_size": kernel_size,
             "padding": padding,
             "data_format": data_format,
@@ -279,7 +277,7 @@ class UNet(BaseBuilder):
         expansion_arguments = {
             "n_filters": n_filters,
             "normalization": normalization,
-            "dropout": dropout,
+            "dropout_rate": dropout_rate,
             "data_format": data_format,
             "activation": activation_middle,
             "kernel_size": kernel_size,
@@ -391,7 +389,7 @@ class UNet(BaseBuilder):
         outputDeep = self.deep_neural_network(
             input_img=input_img,
             n_filters=self.n_filters,
-            dropout=self.dropout,
+            dropout_rate=self.dropout_rate,
             normalization=self.normalization,
             data_format=self.data_format,
             activation_middle=self.activation_middle,

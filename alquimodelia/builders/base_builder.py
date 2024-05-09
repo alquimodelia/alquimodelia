@@ -61,7 +61,8 @@ class BaseBuilder:
         y_timesteps: int = None,
         y_height: int = None,
         y_width: int = None,
-        activation_final: str = "sigmoid",
+        activation_end: str = "sigmoid",
+        dropout_rate: float = 0.5,
         data_format: str = "channels_last",
         normalization: Layer = None,  # The normalization Layer to apply
         dimensions_to_use=None,
@@ -88,7 +89,7 @@ class BaseBuilder:
             self.y_width,
         )
 
-        self.activation_final = activation_final
+        self.activation_end = activation_end
         self.data_format = data_format
         if self.data_format == "channels_first":
             self.channels_dimension = 0
@@ -98,6 +99,7 @@ class BaseBuilder:
         if normalization is None:
             normalization = BatchNormalization
         self.normalization = normalization
+        self.dropout_rate = dropout_rate
 
         self.input_shape = input_shape
         self.input_layer = input_layer
