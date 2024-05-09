@@ -2,7 +2,7 @@ from functools import cached_property
 
 import keras
 from keras import ops
-from keras.layers import BatchNormalization, Layer
+from keras.layers import BatchNormalization, Layer, UpSampling2D
 from keras.models import Model
 
 
@@ -28,6 +28,11 @@ class BaseBuilder:
     def get_input_layer(self):
         # This is to get the layer to enter the arch, here you can add augmentation or other processing
         input_layer = self.input_layer
+        if self.upsampling:
+            # TODO: think and set how to get this value
+            input_layer = self.UpSampling(
+                self.upsampling, data_format=self.data_format
+            )(input_layer)
         if self.normalization:
             input_layer = self.normalization()(input_layer)
         return input_layer
@@ -68,6 +73,7 @@ class BaseBuilder:
         dimensions_to_use=None,
         input_shape: tuple = None,
         input_layer: Layer = None,
+        upsampling: int = None,
         **kwargs,
     ):
         # shape (N, T, H, W, C)
@@ -99,6 +105,8 @@ class BaseBuilder:
         if normalization is None:
             normalization = BatchNormalization
         self.normalization = normalization
+        self.upsampling = upsampling
+        self.UpSampling = UpSampling2D
         self.dropout_rate = dropout_rate
 
         self.input_shape = input_shape

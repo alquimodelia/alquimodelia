@@ -65,12 +65,6 @@ class UNet(BaseBuilder):
         else:
             self.Dropout = keras.layers.Dropout
 
-    def get_input_layer(self):
-        input_layer = self.input_layer
-        if self.normalization:
-            input_layer = self.normalization()(input_layer)
-        return input_layer
-
     @cached_property
     def conv_dimension(self):
         # 1D, 2D, or 3D convulutions
