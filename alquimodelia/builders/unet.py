@@ -93,12 +93,6 @@ class UNet(BaseBuilder):
 
         return self._number_of_conv_layers
 
-    def opposite_data_format(self):
-        if self.data_format == "channels_first":
-            return "channels_last"
-        elif self.data_format == "channels_last":
-            return "channels_first"
-
     def residual_block(
         self,
         input_tensor,

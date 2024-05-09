@@ -148,3 +148,9 @@ class BaseBuilder:
                 dimension_to_use.append("B")
         self.dimension_to_use = dimension_to_use
         return input_shape
+
+    def opposite_data_format(self):
+        if self.data_format == "channels_first":
+            return "channels_last"
+        elif self.data_format == "channels_last":
+            return "channels_first"

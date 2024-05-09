@@ -11,6 +11,7 @@ def adjust_to_multiple(varA, varB):
     else:
         return round(varA / varB) * varB
 
+
 def max_if_not_bigger(n1, n2):
     if n2 > n1:
         return n1
