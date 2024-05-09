@@ -1,4 +1,7 @@
+from functools import cached_property
+
 import keras
+from keras import ops
 from keras.layers import BatchNormalization, Layer
 from keras.models import Model
 
@@ -8,12 +11,19 @@ class BaseBuilder:
     num_features_to_train = None
     num_classes = None
 
-    def model_input_shape(self):
-        raise NotImplementedError
+    def _derive_from_input_layer(self, input_shape):
+        input_shape = input_shape or ops.shape(self.input_layer)
+        # TODO:
+        pass
 
     def define_input_layer(self):
         # This is the base for an input layer. It can be overwrite, but it should set this variable
-        self.input_layer = keras.Input(self.model_input_shape)
+        # TODO: if there is an input layer, derive the other properties from this
+        if self.input_layer:
+            self._derive_from_input_layer()
+        self.input_layer = self.input_layer or keras.Input(
+            self.model_input_shape
+        )
 
     def get_input_layer(self):
         # This is to get the layer to enter the arch, here you can add augmentation or other processing
@@ -54,6 +64,9 @@ class BaseBuilder:
         activation_final: str = "sigmoid",
         data_format: str = "channels_last",
         normalization: Layer = None,  # The normalization Layer to apply
+        dimensions_to_use=None,
+        input_shape: tuple = None,
+        input_layer: Layer = None,
         **kwargs,
     ):
         # shape (N, T, H, W, C)
@@ -64,10 +77,6 @@ class BaseBuilder:
             self.num_features_to_train or num_features_to_train
         )  # channels
         self.input_dimensions = (self.x_timesteps, self.x_height, self.x_width)
-        self.input_dimensions_channels = (
-            *self.input_dimensions,
-            self.num_features_to_train,
-        )
 
         self.y_timesteps = y_timesteps or timesteps
         self.y_height = y_height or height
@@ -90,6 +99,12 @@ class BaseBuilder:
             normalization = BatchNormalization
         self.normalization = normalization
 
+        self.input_shape = input_shape
+        self.input_layer = input_layer
+
+        self.dimensions_to_use = dimensions_to_use  # or ("T", "H", "W", "B")
+        self._dimensions_to_use = self.dimensions_to_use
+
         self.model_setup()
         self.define_input_layer()
         self.define_model()
@@ -97,3 +112,39 @@ class BaseBuilder:
         self.model = Model(
             inputs=self.input_layer, outputs=self.output_layer, **kwargs
         )
+
+    @cached_property
+    def model_input_shape(self):
+        if self.input_shape:
+            input_shape = list(self.input_shape)
+            # TODO: make the dimensions if there is an input_shape
+            return self.input_shape
+        if self._dimensions_to_use:
+            self.dimensions_to_use = self._dimensions_to_use
+            # This is for a forced dimension use and order.
+            input_shape = []
+            for dim in self._dimensions_to_use:
+                if dim == "T":
+                    input_shape.append(self.x_timesteps)
+                if dim == "H":
+                    input_shape.append(self.x_height)
+                if dim == "W":
+                    input_shape.append(self.x_width)
+                if dim == "B":
+                    input_shape.append(self.num_features_to_train)
+        else:
+            # This defaults to (T, H, W, B). And any (not channels) equal to 1 is droped.
+            input_shape = []
+            dimension_to_use = []
+            for name, size in zip(("T", "H", "W"), self.input_dimensions):
+                if size > 1:
+                    input_shape.append(size)
+                    dimension_to_use.append(name)
+            if self.channels_dimension == 0:
+                input_shape.insert(0, self.num_features_to_train)
+                dimension_to_use.insert(0, "B")
+            else:
+                input_shape.append(self.num_features_to_train)
+                dimension_to_use.append("B")
+        self.dimension_to_use = dimension_to_use
+        return input_shape

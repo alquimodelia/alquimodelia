@@ -26,7 +26,6 @@ class UNet(BaseBuilder):
         dropout: float = 0.5,
         attention: bool = False,
         residual: bool = False,
-        dimensions_to_use=None,
         spatial_dropout: bool = True,
         classes_method: str = "Conv",
         **kwargs,
@@ -45,9 +44,6 @@ class UNet(BaseBuilder):
         self.kernel_initializer = kernel_initializer
         self.attention = attention
         self.residual = residual
-
-        self.dimensions_to_use = dimensions_to_use  # or ("T", "H", "W", "B")
-        self._dimensions_to_use = self.dimensions_to_use
 
         self.classes_method = classes_method  # Dense || Conv
 
@@ -76,32 +72,6 @@ class UNet(BaseBuilder):
         if self.normalization:
             input_layer = self.normalization()(input_layer)
         return input_layer
-
-    @cached_property
-    def model_input_shape(self):
-        if self._dimensions_to_use:
-            self.dimensions_to_use = self._dimensions_to_use
-            # This is for a forced dimension use and order.
-            input_shape = []
-            for dim in self._dimensions_to_use:
-                if dim == "T":
-                    input_shape.append(self.x_timesteps)
-                if dim == "H":
-                    input_shape.append(self.x_height)
-                if dim == "W":
-                    input_shape.append(self.x_width)
-                if dim == "B":
-                    input_shape.append(self.num_features_to_train)
-        else:
-            # This defaults to (T, H, W, B). And any (not channels) equal to 1 is droped.
-            input_shape = [f for f in self.input_dimensions if f > 1]
-            if self.channels_dimension == 0:
-                input_shape.insert(0, self.num_features_to_train)
-            else:
-                input_shape.append(self.num_features_to_train)
-        # TODO: create the dimension_to_use atribute with the corret order
-
-        return input_shape
 
     @cached_property
     def conv_dimension(self):
@@ -437,6 +407,7 @@ class UNet(BaseBuilder):
             residual=self.residual,
         )
         self.last_arch_layer = outputDeep
+        return outputDeep
 
     def define_output_layer(self):
         outputDeep = self.last_arch_layer
