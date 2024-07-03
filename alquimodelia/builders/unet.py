@@ -17,11 +17,9 @@ class UNet(BaseBuilder):
         n_filters: int = 16,
         number_of_conv_layers: int = 0,
         kernel_size: int = 3,
-        normalization: bool = True,
         padding_style: str = "same",
         padding: int = 0,
         activation_middle: str = "relu",
-        activation_end: str = "softmax",
         kernel_initializer: str = "he_normal",
         attention: bool = False,
         residual: bool = False,
@@ -32,13 +30,11 @@ class UNet(BaseBuilder):
         self._number_of_conv_layers = number_of_conv_layers
         self.n_filters = n_filters
         self.kernel_size = kernel_size
-        self.normalization = normalization
         self.padding = padding
         self.padding_style = padding_style
         self.spatial_dropout = spatial_dropout
 
         self.activation_middle = activation_middle
-        self.activation_end = activation_end
         self.kernel_initializer = kernel_initializer
         self.attention = attention
         self.residual = residual
@@ -127,7 +123,7 @@ class UNet(BaseBuilder):
             data_format=data_format,
             activation=activation,
         )(input_tensor)
-        if normalization:
+        if normalization is not None:
             x = self.normalization()(x)
         # Second layer.
         x = self.Conv(
@@ -138,7 +134,7 @@ class UNet(BaseBuilder):
             data_format=data_format,
             activation=activation,
         )(x)
-        if normalization:
+        if normalization is not None:
             x = self.normalization()(x)
 
         if residual:

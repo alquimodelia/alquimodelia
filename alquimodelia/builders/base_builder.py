@@ -33,7 +33,7 @@ class BaseBuilder:
             input_layer = self.UpSampling(
                 self.upsampling, data_format=self.data_format
             )(input_layer)
-        if self.normalization:
+        if self.normalization is not None:
             input_layer = self.normalization()(input_layer)
         return input_layer
 
