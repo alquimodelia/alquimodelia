@@ -1,3 +1,6 @@
+import os
+
+os.environ["KERAS_BACKEND"] = "torch"
 import keras
 from keras import layers, ops
 from keras.layers import Add, Concatenate, Layer
@@ -80,7 +83,7 @@ class Transformer(BaseBuilder):
             enconded_tokens = layers.Dropout(dropout_rate)(enconded_tokens)
         return enconded_tokens
 
-    def tranformer_block(self, tokens):
+    def transformer_block(self, tokens):
         # Layer normalization 1.
         x1 = layers.LayerNormalization(epsilon=1e-6)(tokens)
         # Create a multi-head attention layer.
@@ -103,10 +106,9 @@ class Transformer(BaseBuilder):
         return tokens
 
     def encoder_block(self, tokens):
-        # ATTENTION BLOCK
         # Create multiple layers of the Transformer block.
         for _ in range(self.num_transformer_layers):
-            tokens = self.tranformer_block(tokens)
+            tokens = self.transformer_block(tokens)
         representation = layers.LayerNormalization(epsilon=1e-6)(tokens)
         representation = layers.Dropout(0.5)(representation)
         return representation
@@ -133,3 +135,18 @@ class Transformer(BaseBuilder):
     def model_setup(self):
         # Any needed setup before building and conecting the layers
         pass
+
+
+# input_args = {
+#     "x_timesteps": 8,  # Number of sentinel images
+#     "y_timesteps": 1,  # Number of volume maps
+#     "num_features_to_train": 12,  # Number of sentinel bands
+#     "num_classes": 1,  # We just want to predict the volume linearly
+#     "height":128,
+#     "width":1,
+# }
+
+# transformer = Transformer(#model_arch="tranformer",
+#                           **input_args)
+# transformer.model.summary()
+# print("sssss")
