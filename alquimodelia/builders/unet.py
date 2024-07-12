@@ -25,6 +25,8 @@ class UNet(BaseBuilder):
         residual: bool = False,
         spatial_dropout: bool = True,
         classes_method: str = "Conv",
+        cropping_method: str = "crop",
+        pad_temp: bool = True,
         **kwargs,
     ):
         self._number_of_conv_layers = number_of_conv_layers
@@ -38,6 +40,9 @@ class UNet(BaseBuilder):
         self.kernel_initializer = kernel_initializer
         self.attention = attention
         self.residual = residual
+        self.cropping_method=cropping_method
+        # TODO: this variable is based on some shity assumtions
+        self.pad_temp=pad_temp
 
         self.classes_method = classes_method  # Dense || Conv
         # TODO: study a way to make cropping within the convluition at the end, this way there is less pixels to actully calculate
@@ -234,7 +239,20 @@ class UNet(BaseBuilder):
             old_p = list_p[i]
             filter_expansion = 2**i
             contracting_arguments["n_filters"] = n_filters * filter_expansion
-            p, c = self.contracting_block(old_p, **contracting_arguments)
+            contracting_arguments_to_use = {**contracting_arguments}
+            if self.cropping_method=="expansion":
+                if self.pad_temp==True:
+                    temp_crop = contracting_arguments["kernel_size"]
+                else:
+                    temp_crop = 1
+                # TODO: this is generating more neurons than just croping at the end, which kills the purpose
+                if i==0:
+                    kernel_crop = self.padding+1
+                    contracting_arguments_to_use.update({
+                        "padding":"valid",
+                        "kernel_size":(temp_crop,
+                                       kernel_crop, kernel_crop),})
+            p, c = self.contracting_block(old_p, **contracting_arguments_to_use)
             list_p.append(p)
             list_c.append(c)
         return list_c
@@ -246,7 +264,9 @@ class UNet(BaseBuilder):
         iterator_expanded_blocks = range(self.number_of_conv_layers)
         iterator_contracted_blocks = reversed(iterator_expanded_blocks)
         n_filters = expansion_arguments["n_filters"]
+        # iteration_counter=0
         for i, c in zip(iterator_expanded_blocks, iterator_contracted_blocks):
+            # iteration_counter+=1
             filter_expansion = 2 ** (c)
             expansion_arguments["n_filters"] = n_filters * filter_expansion
             c4 = self.expansive_block(
@@ -411,7 +431,6 @@ class UNet(BaseBuilder):
         outputDeep = self.last_arch_layer
         # "Time" dimension colapse (or expansion)
         if self.y_timesteps < self.x_timesteps:
-            # TODO: the channels 2st wont work training on CPU
             # TODO: this might not work on all 1D, 2D...
             # TODO: a transpose or reshape might be a better alternative if no GPU is available
             # On torch it seems to work on CPU.
@@ -432,7 +451,8 @@ class UNet(BaseBuilder):
 
         # TODO: croping should be in a different function to treat output
         if self.padding > 0:
-            outputDeep = self.Cropping(cropping=self.cropping_tuple)(outputDeep)
+            if self.cropping_method=="crop":
+                outputDeep = self.Cropping(cropping=self.cropping_tuple)(outputDeep)
         self.output_layer = outputDeep
         return outputDeep
 
