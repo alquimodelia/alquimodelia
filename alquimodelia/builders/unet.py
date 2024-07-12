@@ -40,6 +40,7 @@ class UNet(BaseBuilder):
         self.residual = residual
 
         self.classes_method = classes_method  # Dense || Conv
+        # TODO: study a way to make cropping within the convluition at the end, this way there is less pixels to actully calculate
 
         super().__init__(**kwargs)
 
@@ -60,6 +61,21 @@ class UNet(BaseBuilder):
             )
         else:
             self.Dropout = keras.layers.Dropout
+        self.Cropping = getattr(keras.layers, f"Cropping{self.conv_dimension}D")
+        # TODO: find way to do croping in all dimensions
+        if self.conv_dimension==2:
+            self.cropping_tuple=(
+                    (self.padding, self.padding),
+                    (self.padding, self.padding),
+                )
+        elif self.conv_dimension==3:
+            self.cropping_tuple=(
+                    (0,0),
+                    (self.padding, self.padding),
+                    (self.padding, self.padding),
+                )
+
+
 
     @cached_property
     def conv_dimension(self):
@@ -416,12 +432,7 @@ class UNet(BaseBuilder):
 
         # TODO: croping should be in a different function to treat output
         if self.padding > 0:
-            outputDeep = Cropping2D(
-                cropping=(
-                    (self.padding, self.padding),
-                    (self.padding, self.padding),
-                )
-            )(outputDeep)
+            outputDeep = self.Cropping(cropping=self.cropping_tuple)(outputDeep)
         self.output_layer = outputDeep
         return outputDeep
 
