@@ -42,6 +42,7 @@ class UNet(BaseBuilder):
         self.residual = residual
         self.cropping_method=cropping_method
         # TODO: this variable is based on some shity assumtions
+        # this variable is useless because this croping method is useless.
         self.pad_temp=pad_temp
 
         self.classes_method = classes_method  # Dense || Conv
@@ -134,13 +135,28 @@ class UNet(BaseBuilder):
         activation: str = "relu",
         kernel_initializer: str = "he_normal",
         residual: bool = False,
+        kernel_size_conv_one=None,
+        kernel_size_conv_two=None,
+        padding_conv_one=None,
+        padding_conv_two=None,
+        n_filters_one=None,
+        n_filters_two=None,
+        
+
     ):
+        kernel_size_conv_one=kernel_size_conv_one or kernel_size
+        kernel_size_conv_two=kernel_size_conv_two or kernel_size
+        padding_conv_one=padding_conv_one or padding
+        padding_conv_two=padding_conv_two or padding
+        n_filters_one=n_filters_one or n_filters
+        n_filters_two=n_filters_two or n_filters
+        
         # first layer
         x = self.Conv(
-            filters=n_filters,
-            kernel_size=kernel_size,
+            filters=n_filters_one,
+            kernel_size=kernel_size_conv_one,
             kernel_initializer=kernel_initializer,
-            padding=padding,
+            padding=padding_conv_one,
             data_format=data_format,
             activation=activation,
         )(input_tensor)
@@ -148,10 +164,10 @@ class UNet(BaseBuilder):
             x = self.normalization()(x)
         # Second layer.
         x = self.Conv(
-            filters=n_filters,
-            kernel_size=kernel_size,
+            filters=n_filters_two,
+            kernel_size=kernel_size_conv_two,
             kernel_initializer=kernel_initializer,
-            padding=padding,
+            padding=padding_conv_two,
             data_format=data_format,
             activation=activation,
         )(x)
@@ -204,14 +220,21 @@ class UNet(BaseBuilder):
         activation: str = "relu",
         padding_style: str = "same",
         attention: bool = False,
+        kernel_size_transpose=None,
+        kernel_size_conv=None,
+        **kwargs,
+
     ):
         if attention:
             gating = self.gating_signal(ci, n_filters, True)
             cii = self.attention_block(cii, gating, n_filters)
 
+        kernel_size_transpose = kernel_size_transpose or kernel_size
+        kernel_size_conv = kernel_size_conv or kernel_size
+
         u = self.ConvTranspose(
             n_filters,
-            kernel_size=kernel_size,
+            kernel_size=kernel_size_transpose,
             strides=strides,
             padding=padding_style,
             data_format=data_format,
@@ -221,11 +244,12 @@ class UNet(BaseBuilder):
         c = self.convolution_block(
             u,
             n_filters=n_filters,
-            kernel_size=kernel_size,
+            kernel_size=kernel_size_conv,
             normalization=normalization,
             data_format=data_format,
             activation=activation,
             padding=padding_style,
+            **kwargs,
         )
         return c
 
@@ -264,14 +288,32 @@ class UNet(BaseBuilder):
         iterator_expanded_blocks = range(self.number_of_conv_layers)
         iterator_contracted_blocks = reversed(iterator_expanded_blocks)
         n_filters = expansion_arguments["n_filters"]
-        # iteration_counter=0
+        iteration_counter=0
         for i, c in zip(iterator_expanded_blocks, iterator_contracted_blocks):
-            # iteration_counter+=1
+            iteration_counter+=1
             filter_expansion = 2 ** (c)
             expansion_arguments["n_filters"] = n_filters * filter_expansion
+            iii_shape = list_c[i].shape
+            ccc_shape = contracted_layers[c].shape
+            expansion_arguments_to_use = {**expansion_arguments}
+            if iteration_counter==self.number_of_conv_layers:
+                if self.cropping_method=="contraction_final_4":
+                    expansion_arguments_to_use.update({
+                        "padding_conv_one":"valid",
+                        "padding_conv_two":"valid",
+
+                        "kernel_size_conv_one":(1,int((self.kernel_size+self.padding+2)/2)+1, int((self.kernel_size+self.padding+2)/2)+1),
+                        "kernel_size_conv_two":(1,int((self.kernel_size+self.padding+2)/2)+1, int((self.kernel_size+self.padding+2)/2)+1),
+
+                        # "n_filters_one":self.num_classes, #TODO: latest last shape
+                        # "n_filters_two":self.num_classes, #TODO: latest last shape
+                        
+                    })
+                    print(22)
             c4 = self.expansive_block(
-                list_c[i], contracted_layers[c], **expansion_arguments
+                list_c[i], contracted_layers[c], **expansion_arguments_to_use
             )
+            c4_shape = c4.shape
             list_c.append(c4)
         return c4
 
@@ -434,13 +476,32 @@ class UNet(BaseBuilder):
             # TODO: this might not work on all 1D, 2D...
             # TODO: a transpose or reshape might be a better alternative if no GPU is available
             # On torch it seems to work on CPU.
-            outputDeep = self.Conv(
-                self.y_timesteps,
-                self.kernel_size,
-                activation=self.activation_end,
-                data_format=self.opposite_data_format(),
-                padding=self.padding_style,
-            )(outputDeep)
+            if self.cropping_method=="contraction_final":
+
+                outputDeep =self.Conv(
+                    self.y_timesteps,
+                    self.kernel_size+self.padding+2,
+                    activation=self.activation_end,
+                    data_format=self.opposite_data_format(),
+                    padding="valid",
+                )(outputDeep)
+            if self.cropping_method=="contraction_final_2":
+                outputDeep =self.Conv(
+                    self.y_timesteps,
+                    (self.kernel_size+self.padding+2, self.kernel_size+self.padding+2, 1),
+                    activation=self.activation_end,
+                    data_format=self.opposite_data_format(),
+                    padding="valid",
+                )(outputDeep)
+
+            else:
+                outputDeep = self.Conv(
+                    self.y_timesteps,
+                    self.kernel_size,
+                    activation=self.activation_end,
+                    data_format=self.opposite_data_format(),
+                    padding=self.padding_style,
+                )(outputDeep)
         # outputDeep = ops.transpose(outputDeep, axes=[0,4,2,3,1])
 
         # new_shape = outputDeep.shape[1:]
