@@ -1,4 +1,6 @@
 from functools import cached_property
+import os
+os.environ["KERAS_BACKEND"] = "torch"
 
 import keras
 from keras import ops
@@ -164,3 +166,135 @@ class BaseBuilder:
             return "channels_last"
         elif self.data_format == "channels_last":
             return "channels_first"
+
+
+class SequenceBuilder(BaseBuilder):
+    def __init__(
+        self,
+        num_sequences:int=1,
+        **kwargs,
+    ):
+        self.num_sequences=num_sequences
+        super().__init__(**kwargs)
+
+    def update_kernel(
+        self,
+        kernel,
+        layer_shape,
+        data_format="NHWC",  # TODO: mudar pa channels_first?
+        kernel_dimension=-2,
+        # based on data format # ASsumir que isto esta sempre certo
+    ):
+        if isinstance(kernel_dimension, int):
+            kernel_dimension = [kernel_dimension]
+        if isinstance(kernel, int):
+            kernel = [kernel]
+
+        max_kernel_tuple_size = len(kernel_dimension)
+        if len(kernel) < max_kernel_tuple_size:
+            kernel += np.full(max_kernel_tuple_size - len(kernel), max(kernel))
+
+        max_kernel_size = [layer_shape[i] for i in kernel_dimension]
+
+        kernel = tuple([min(m, k) for m, k in zip(max_kernel_size, kernel)])
+        # The `kernel_size` argument must be a tuple of 2 integers. Received: (1,)
+        if len(kernel) == 1:
+            kernel = kernel[0]
+        return kernel
+
+
+    def arch_block(self):
+        # Defines the arch block to be used on repetition
+        raise NotImplementedError
+
+
+    def define_model(self):
+        # This is the model definition and it must return the output_layer of the architeture. which can be modified further
+        # It should use the get_input_layer to fetch the inital layer.
+        # it should set the self.last_arch_layer
+        input_layer = self.get_input_layer()
+        sequence_layer = input_layer
+        for i in range(self.num_sequences):
+            sequence_layer = self.arch_block(sequence_layer)
+
+        self.last_arch_layer = sequence_layer
+        return sequence_layer
+
+    def define_output_layer(self):
+        # This should only deal with the last layer, it can be used to define the classification for instance, or multiple methods to close the model
+        # it should use the last_arch_layer
+        # it should define self.output_layer
+        outputDeep = self.last_arch_layer
+        self.output_layer = outputDeep
+
+    def model_setup(self):
+        # Any needed setup before building and conecting the layers
+        pass
+
+
+
+class CNN(SequenceBuilder):
+    """Base classe for Unet models."""
+
+    def __init__(
+        self,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+
+    def arch_block(
+        self,
+        x,
+        conv_args=None,
+        max_pool_args=None,
+        filter_enlarger=4,
+        filter_limit=200,
+    ):
+        """Defines the architecture block for the CNN layer.
+
+        This method defines a block of operations that includes a convolutional layer, a max pooling layer, and a dropout layer.
+
+        Parameters:
+        -----------
+        x: keras.layer
+            Input layer
+        conv_args: dict
+            Arguments for the convolutional layer. Default is {}.
+        max_pool_args: dict
+            Arguments for the max pooling layer. Default is {"pool_size": 2}.
+        filter_enlarger: int
+            Multiplier for the number of filters in the convolutional layer. Default is 4.
+        filter_limit: int
+            Maximum number of filters in the convolutional layer. Default is 200.
+
+        Returns:
+        --------
+        x: keras.layer
+            Output layer
+        """
+        if max_pool_args is None:
+            max_pool_args = {"pool_size": 2}
+        if conv_args is None:
+            conv_args = {}
+        for k, v in {
+            "filters": 16,
+            "kernel_size": 3,
+            "activation": "relu",
+        }.items():
+            if k not in conv_args:
+                conv_args[k] = v
+
+        x = self.Conv(**conv_args)(x)
+
+        pool = self.update_kernel(max_pool_args["pool_size"], x.shape)
+        max_pool_args.update({"pool_size": pool})
+
+        x = self.MaxPooling(**max_pool_args)(x)
+        x = self.Dropout(self.dropout_value)(x)
+
+        return x
+
+
+
+CNN().model.summary()
+print("ss")
