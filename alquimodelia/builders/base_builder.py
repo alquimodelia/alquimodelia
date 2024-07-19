@@ -211,6 +211,7 @@ class BaseBuilder:
         elif self.data_format == "channels_last":
             return "channels_first"
 
+
 # TODO: review
 class SequenceBuilder(BaseBuilder):
     def __init__(

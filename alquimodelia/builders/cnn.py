@@ -19,7 +19,6 @@ class CNN(SequenceBuilder):
         **kwargs,
     ):
         self.spatial_dropout = spatial_dropout
-        self.dropout_value = 0.3
         self._number_of_conv_layers = number_of_conv_layers
         self.padding = padding
         super().__init__(**kwargs)
@@ -126,6 +125,6 @@ class CNN(SequenceBuilder):
         max_pool_args.update({"pool_size": pool})
 
         x = self.MaxPooling(**max_pool_args)(x)
-        x = self.Dropout(self.dropout_value)(x)
+        x = self.Dropout(self.dropout_rate)(x)
 
         return x
