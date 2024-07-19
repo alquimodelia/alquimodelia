@@ -1,10 +1,9 @@
 from functools import cached_property
-import os
-os.environ["KERAS_BACKEND"] = "torch"
 
 import keras
+import numpy as np
 from keras import ops
-from keras.layers import BatchNormalization, Layer, UpSampling2D
+from keras.layers import BatchNormalization, Dense, Layer, UpSampling2D
 from keras.models import Model
 
 
@@ -69,11 +68,14 @@ class BaseBuilder:
         y_height: int = None,
         y_width: int = None,
         activation_end: str = "sigmoid",
+        activation_middle: str = "relu",
         dropout_rate: float = 0.5,
         data_format: str = "channels_last",
         normalization: Layer = None,  # The normalization Layer to apply
         dimensions_to_use=None,
+        dimension_to_predict=None,
         input_shape: tuple = None,
+        output_shape: tuple = None,
         input_layer: Layer = None,
         upsampling: int = None,
         **kwargs,
@@ -96,7 +98,7 @@ class BaseBuilder:
             self.y_height,
             self.y_width,
         )
-
+        self.activation_middle = activation_middle
         self.activation_end = activation_end
         self.data_format = data_format
         if self.data_format == "channels_first":
@@ -112,10 +114,14 @@ class BaseBuilder:
         self.dropout_rate = dropout_rate
 
         self.input_shape = input_shape
+        self.output_shape = output_shape
+
         self.input_layer = input_layer
 
         self.dimensions_to_use = dimensions_to_use  # or ("T", "H", "W", "B")
         self._dimensions_to_use = self.dimensions_to_use
+        self.dimension_to_predict = dimension_to_predict
+        self._dimension_to_predict = self.dimension_to_predict
 
         self.model_setup()
         self.define_input_layer()
@@ -146,6 +152,7 @@ class BaseBuilder:
                     input_shape.append(self.num_features_to_train)
         else:
             # This defaults to (T, H, W, B). And any (not channels) equal to 1 is droped.
+            # Should this be recheked for instances with 1 dim?
             input_shape = []
             dimension_to_use = []
             for name, size in zip(("T", "H", "W"), self.input_dimensions):
@@ -159,7 +166,44 @@ class BaseBuilder:
                 input_shape.append(self.num_features_to_train)
                 dimension_to_use.append("B")
         self.dimension_to_use = dimension_to_use
-        return input_shape
+        return tuple(input_shape)
+
+    @cached_property
+    def model_output_shape(self):
+        if self.output_shape:
+            output_shape = list(self.output_shape)
+            # TODO: make the dimensions if there is an output_shape
+            return self.output_shape
+        if self._dimension_to_predict:
+            self.dimension_to_predict = self._dimension_to_predict
+            # This is for a forced dimension use and order.
+            output_shape = []
+            for dim in self._dimension_to_predict:
+                if dim == "T":
+                    output_shape.append(self.y_timesteps)
+                if dim == "H":
+                    output_shape.append(self.y_height)
+                if dim == "W":
+                    output_shape.append(self.y_width)
+                if dim == "B":
+                    output_shape.append(self.num_classes)
+        else:
+            # This defaults to (T, H, W, B). And any (not channels) equal to 1 is droped.
+            # Should this be recheked for instances with 1 dim?
+            output_shape = []
+            dimension_to_predict = []
+            for name, size in zip(("T", "H", "W"), self.output_dimensions):
+                if size > 1:
+                    output_shape.append(size)
+                    dimension_to_predict.append(name)
+            if self.channels_dimension == 0:
+                output_shape.insert(0, self.num_classes)
+                dimension_to_predict.insert(0, "B")
+            else:
+                output_shape.append(self.num_classes)
+                dimension_to_predict.append("B")
+        self.dimension_to_predict = dimension_to_predict
+        return tuple(output_shape)
 
     def opposite_data_format(self):
         if self.data_format == "channels_first":
@@ -167,14 +211,19 @@ class BaseBuilder:
         elif self.data_format == "channels_last":
             return "channels_first"
 
-
+# TODO: review
 class SequenceBuilder(BaseBuilder):
     def __init__(
         self,
-        num_sequences:int=1,
+        num_sequences: int = None,
+        flatten_output=True,
+        kernel_initializer="he_normal",
         **kwargs,
     ):
-        self.num_sequences=num_sequences
+        self.num_sequences = num_sequences
+        self.flatten_output = flatten_output
+        self.kernel_initializer = kernel_initializer
+
         super().__init__(**kwargs)
 
     def update_kernel(
@@ -202,11 +251,9 @@ class SequenceBuilder(BaseBuilder):
             kernel = kernel[0]
         return kernel
 
-
     def arch_block(self):
         # Defines the arch block to be used on repetition
         raise NotImplementedError
-
 
     def define_model(self):
         # This is the model definition and it must return the output_layer of the architeture. which can be modified further
@@ -220,81 +267,111 @@ class SequenceBuilder(BaseBuilder):
         self.last_arch_layer = sequence_layer
         return sequence_layer
 
-    def define_output_layer(self):
-        # This should only deal with the last layer, it can be used to define the classification for instance, or multiple methods to close the model
-        # it should use the last_arch_layer
-        # it should define self.output_layer
-        outputDeep = self.last_arch_layer
-        self.output_layer = outputDeep
-
-    def model_setup(self):
-        # Any needed setup before building and conecting the layers
-        pass
-
-
-
-class CNN(SequenceBuilder):
-    """Base classe for Unet models."""
-
-    def __init__(
-        self,
-        **kwargs,
+    def dense_block(
+        self, x, dense_args=None, filter_enlarger=4, filter_limit=200
     ):
-        super().__init__(**kwargs)
+        """Defines the architecture block for the dense layer.
 
-    def arch_block(
-        self,
-        x,
-        conv_args=None,
-        max_pool_args=None,
-        filter_enlarger=4,
-        filter_limit=200,
-    ):
-        """Defines the architecture block for the CNN layer.
-
-        This method defines a block of operations that includes a convolutional layer, a max pooling layer, and a dropout layer.
+        This method defines a block of operations that includes two dense layers. The number of filters in the dense layers is determined by the `filter_enlarger` and `filter_limit` parameters.
 
         Parameters:
         -----------
         x: keras.layer
             Input layer
-        conv_args: dict
-            Arguments for the convolutional layer. Default is {}.
-        max_pool_args: dict
-            Arguments for the max pooling layer. Default is {"pool_size": 2}.
+        dense_args: dict or list
+            Arguments for the dense layers. If a list, it should contain two dictionaries for the first and second dense layers, respectively.
         filter_enlarger: int
-            Multiplier for the number of filters in the convolutional layer. Default is 4.
+            Multiplier for the number of filters in the dense layers. Default is 4.
         filter_limit: int
-            Maximum number of filters in the convolutional layer. Default is 200.
+            Maximum number of filters in the dense layers. Default is 200.
 
         Returns:
         --------
         x: keras.layer
             Output layer
         """
-        if max_pool_args is None:
-            max_pool_args = {"pool_size": 2}
-        if conv_args is None:
-            conv_args = {}
-        for k, v in {
-            "filters": 16,
-            "kernel_size": 3,
-            "activation": "relu",
-        }.items():
-            if k not in conv_args:
-                conv_args[k] = v
+        default_dense_args = {"kernel_initializer": self.kernel_initializer}
+        units_in = None
+        if dense_args is None:
+            dense_args = default_dense_args
+        if isinstance(dense_args, list):
+            dense_args1 = default_dense_args
+            dense_args2 = default_dense_args
+            dense_args1.update(dense_args[0])
+            units_in = dense_args[0].get("units", None)
+            dense_args2.update(dense_args[1])
+        else:
+            default_dense_args.update(dense_args)
+            dense_args1 = default_dense_args
+            dense_args2 = default_dense_args
 
-        x = self.Conv(**conv_args)(x)
+        filters_out = dense_args2.pop("units", None)
+        if filters_out is None:
+            if self.flatten_output:
+                filters_out = np.prod(self.model_output_shape)
+            else:
+                filters_out = self.model_output_shape[-1]
+        if units_in is None:
+            units_in = dense_args1.pop(
+                "units",
+                max(filters_out * filter_enlarger, filter_limit),
+            )
 
-        pool = self.update_kernel(max_pool_args["pool_size"], x.shape)
-        max_pool_args.update({"pool_size": pool})
-
-        x = self.MaxPooling(**max_pool_args)(x)
-        x = self.Dropout(self.dropout_value)(x)
+        x = Dense(units_in, **dense_args1)(x)
+        x = Dense(filters_out, **dense_args2)(x)
 
         return x
 
+    def interpretation_layer(
+        self, output_layer, dense_args=None, output_layer_args=None
+    ):
+        """Defines the interpretation layers for the model.
 
+        This method defines a block of operations that includes a dense layer and an output layer. The arguments for the dense layer are determined by the `dense_args` parameter.
 
-CNN().model.summary()
-print("ss")
+        Parameters:
+        -----------
+        output_layer: keras.layer
+            Input layer for the interpretation layers
+        dense_args: dict
+            Arguments for the dense layer. Default is None, which means to use the default arguments.
+        output_layer_args: dict
+            Arguments for the output layer. Default is {}.
+
+        Returns:
+        --------
+        output_layer: keras.layer
+            Output layer
+        """
+        if output_layer_args is None:
+            output_layer_args = {}
+        if dense_args is None:
+            dense_args = {}
+            if self.activation_end != self.activation_middle:
+                dense_args = [
+                    {"activation": self.activation_middle},
+                    {"activation": self.activation_end},
+                ]
+            else:
+                dense_args = {"activation": self.activation_end}
+
+        output_layer = self.dense_block(output_layer, dense_args=dense_args)
+        return output_layer
+
+    def define_output_layer(self):
+        # This should only deal with the last layer, it can be used to define the classification for instance, or multiple methods to close the model
+        # it should use the last_arch_layer
+        # it should define self.output_layer
+        outputDeep = self.last_arch_layer
+        if self.flatten_output:
+            outputDeep = keras.layers.Flatten()(outputDeep)
+        outputDeep = self.interpretation_layer(outputDeep)
+        if outputDeep.shape[1:] != self.model_output_shape:
+            outputDeep = keras.layers.Reshape(self.model_output_shape)(
+                outputDeep
+            )
+        self.output_layer = outputDeep
+
+    def model_setup(self):
+        # Any needed setup before building and conecting the layers
+        pass

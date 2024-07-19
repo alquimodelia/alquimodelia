@@ -1,107 +1,47 @@
-from functools import cached_property
 from typing import Any, Dict
 
 import keras
-from keras.layers import Activation, Add, Cropping2D, Multiply, concatenate
+from keras.layers import Activation, Add, Multiply, concatenate
 from keras.src.legacy.backend import int_shape
 
-from alquimodelia.builders.base_builder import BaseBuilder
-from alquimodelia.utils import count_number_divisions, repeat_elem
+from alquimodelia.builders.cnn import CNN
+from alquimodelia.utils import repeat_elem
 
 
-class UNet(BaseBuilder):
+class UNet(CNN):
     """Base classe for Unet models."""
 
     def __init__(
         self,
         n_filters: int = 16,
-        number_of_conv_layers: int = 0,
         kernel_size: int = 3,
         padding_style: str = "same",
-        padding: int = 0,
         activation_middle: str = "relu",
         kernel_initializer: str = "he_normal",
         attention: bool = False,
         residual: bool = False,
-        spatial_dropout: bool = True,
         classes_method: str = "Conv",
         cropping_method: str = "crop",
         pad_temp: bool = True,
         **kwargs,
     ):
-        self._number_of_conv_layers = number_of_conv_layers
         self.n_filters = n_filters
         self.kernel_size = kernel_size
-        self.padding = padding
         self.padding_style = padding_style
-        self.spatial_dropout = spatial_dropout
 
         self.activation_middle = activation_middle
         self.kernel_initializer = kernel_initializer
         self.attention = attention
         self.residual = residual
-        self.cropping_method=cropping_method
+        self.cropping_method = cropping_method
         # TODO: this variable is based on some shity assumtions
         # this variable is useless because this croping method is useless.
-        self.pad_temp=pad_temp
+        self.pad_temp = pad_temp
 
         self.classes_method = classes_method  # Dense || Conv
         # TODO: study a way to make cropping within the convluition at the end, this way there is less pixels to actully calculate
 
         super().__init__(**kwargs)
-
-    def model_setup(self):
-        self.Conv = getattr(keras.layers, f"Conv{self.conv_dimension}D")
-        self.ConvTranspose = getattr(
-            keras.layers, f"Conv{self.conv_dimension}DTranspose"
-        )
-        self.MaxPooling = getattr(
-            keras.layers, f"MaxPooling{self.conv_dimension}D"
-        )
-        self.UpSampling = getattr(
-            keras.layers, f"UpSampling{self.conv_dimension}D"
-        )
-        if self.spatial_dropout:
-            self.Dropout = getattr(
-                keras.layers, f"SpatialDropout{self.conv_dimension}D"
-            )
-        else:
-            self.Dropout = keras.layers.Dropout
-        self.Cropping = getattr(keras.layers, f"Cropping{self.conv_dimension}D")
-        # TODO: find way to do croping in all dimensions
-        if self.conv_dimension==2:
-            self.cropping_tuple=(
-                    (self.padding, self.padding),
-                    (self.padding, self.padding),
-                )
-        elif self.conv_dimension==3:
-            self.cropping_tuple=(
-                    (0,0),
-                    (self.padding, self.padding),
-                    (self.padding, self.padding),
-                )
-
-
-
-    @cached_property
-    def conv_dimension(self):
-        # 1D, 2D, or 3D convulutions
-        return len(self.model_input_shape) - 1
-
-    @cached_property
-    def number_of_conv_layers(self):
-        if self._number_of_conv_layers == 0:
-            number_of_layers = []
-            study_shape = list(self.model_input_shape)
-            study_shape.pop(self.channels_dimension)
-            study_shape = tuple(study_shape)
-            for size in study_shape:
-                number_of_layers.append(count_number_divisions(size, 0))
-
-            self._number_of_conv_layers = min(number_of_layers)
-            self._number_of_conv_layers = max(self._number_of_conv_layers, 1)
-
-        return self._number_of_conv_layers
 
     def residual_block(
         self,
@@ -141,16 +81,14 @@ class UNet(BaseBuilder):
         padding_conv_two=None,
         n_filters_one=None,
         n_filters_two=None,
-        
-
     ):
-        kernel_size_conv_one=kernel_size_conv_one or kernel_size
-        kernel_size_conv_two=kernel_size_conv_two or kernel_size
-        padding_conv_one=padding_conv_one or padding
-        padding_conv_two=padding_conv_two or padding
-        n_filters_one=n_filters_one or n_filters
-        n_filters_two=n_filters_two or n_filters
-        
+        kernel_size_conv_one = kernel_size_conv_one or kernel_size
+        kernel_size_conv_two = kernel_size_conv_two or kernel_size
+        padding_conv_one = padding_conv_one or padding
+        padding_conv_two = padding_conv_two or padding
+        n_filters_one = n_filters_one or n_filters
+        n_filters_two = n_filters_two or n_filters
+
         # first layer
         x = self.Conv(
             filters=n_filters_one,
@@ -223,7 +161,6 @@ class UNet(BaseBuilder):
         kernel_size_transpose=None,
         kernel_size_conv=None,
         **kwargs,
-
     ):
         if attention:
             gating = self.gating_signal(ci, n_filters, True)
@@ -264,19 +201,27 @@ class UNet(BaseBuilder):
             filter_expansion = 2**i
             contracting_arguments["n_filters"] = n_filters * filter_expansion
             contracting_arguments_to_use = {**contracting_arguments}
-            if self.cropping_method=="expansion":
-                if self.pad_temp==True:
+            if self.cropping_method == "expansion":
+                if self.pad_temp is True:
                     temp_crop = contracting_arguments["kernel_size"]
                 else:
                     temp_crop = 1
                 # TODO: this is generating more neurons than just croping at the end, which kills the purpose
-                if i==0:
-                    kernel_crop = self.padding+1
-                    contracting_arguments_to_use.update({
-                        "padding":"valid",
-                        "kernel_size":(temp_crop,
-                                       kernel_crop, kernel_crop),})
-            p, c = self.contracting_block(old_p, **contracting_arguments_to_use)
+                if i == 0:
+                    kernel_crop = self.padding + 1
+                    contracting_arguments_to_use.update(
+                        {
+                            "padding": "valid",
+                            "kernel_size": (
+                                temp_crop,
+                                kernel_crop,
+                                kernel_crop,
+                            ),
+                        }
+                    )
+            p, c = self.contracting_block(
+                old_p, **contracting_arguments_to_use
+            )
             list_p.append(p)
             list_c.append(c)
         return list_c
@@ -288,27 +233,38 @@ class UNet(BaseBuilder):
         iterator_expanded_blocks = range(self.number_of_conv_layers)
         iterator_contracted_blocks = reversed(iterator_expanded_blocks)
         n_filters = expansion_arguments["n_filters"]
-        iteration_counter=0
+        iteration_counter = 0
         for i, c in zip(iterator_expanded_blocks, iterator_contracted_blocks):
-            iteration_counter+=1
+            iteration_counter += 1
             filter_expansion = 2 ** (c)
             expansion_arguments["n_filters"] = n_filters * filter_expansion
             iii_shape = list_c[i].shape
             ccc_shape = contracted_layers[c].shape
             expansion_arguments_to_use = {**expansion_arguments}
-            if iteration_counter==self.number_of_conv_layers:
-                if self.cropping_method=="contraction_final_4":
-                    expansion_arguments_to_use.update({
-                        "padding_conv_one":"valid",
-                        "padding_conv_two":"valid",
-
-                        "kernel_size_conv_one":(1,int((self.kernel_size+self.padding+2)/2)+1, int((self.kernel_size+self.padding+2)/2)+1),
-                        "kernel_size_conv_two":(1,int((self.kernel_size+self.padding+2)/2)+1, int((self.kernel_size+self.padding+2)/2)+1),
-
-                        # "n_filters_one":self.num_classes, #TODO: latest last shape
-                        # "n_filters_two":self.num_classes, #TODO: latest last shape
-                        
-                    })
+            if iteration_counter == self.number_of_conv_layers:
+                if self.cropping_method == "contraction_final_4":
+                    expansion_arguments_to_use.update(
+                        {
+                            "padding_conv_one": "valid",
+                            "padding_conv_two": "valid",
+                            "kernel_size_conv_one": (
+                                1,
+                                int((self.kernel_size + self.padding + 2) / 2)
+                                + 1,
+                                int((self.kernel_size + self.padding + 2) / 2)
+                                + 1,
+                            ),
+                            "kernel_size_conv_two": (
+                                1,
+                                int((self.kernel_size + self.padding + 2) / 2)
+                                + 1,
+                                int((self.kernel_size + self.padding + 2) / 2)
+                                + 1,
+                            ),
+                            # "n_filters_one":self.num_classes, #TODO: latest last shape
+                            # "n_filters_two":self.num_classes, #TODO: latest last shape
+                        }
+                    )
                     print(22)
             c4 = self.expansive_block(
                 list_c[i], contracted_layers[c], **expansion_arguments_to_use
@@ -476,19 +432,22 @@ class UNet(BaseBuilder):
             # TODO: this might not work on all 1D, 2D...
             # TODO: a transpose or reshape might be a better alternative if no GPU is available
             # On torch it seems to work on CPU.
-            if self.cropping_method=="contraction_final":
-
-                outputDeep =self.Conv(
+            if self.cropping_method == "contraction_final":
+                outputDeep = self.Conv(
                     self.y_timesteps,
-                    self.kernel_size+self.padding+2,
+                    self.kernel_size + self.padding + 2,
                     activation=self.activation_end,
                     data_format=self.opposite_data_format(),
                     padding="valid",
                 )(outputDeep)
-            if self.cropping_method=="contraction_final_2":
-                outputDeep =self.Conv(
+            if self.cropping_method == "contraction_final_2":
+                outputDeep = self.Conv(
                     self.y_timesteps,
-                    (self.kernel_size+self.padding+2, self.kernel_size+self.padding+2, 1),
+                    (
+                        self.kernel_size + self.padding + 2,
+                        self.kernel_size + self.padding + 2,
+                        1,
+                    ),
                     activation=self.activation_end,
                     data_format=self.opposite_data_format(),
                     padding="valid",
@@ -512,8 +471,10 @@ class UNet(BaseBuilder):
 
         # TODO: croping should be in a different function to treat output
         if self.padding > 0:
-            if self.cropping_method=="crop":
-                outputDeep = self.Cropping(cropping=self.cropping_tuple)(outputDeep)
+            if self.cropping_method == "crop":
+                outputDeep = self.Cropping(cropping=self.cropping_tuple)(
+                    outputDeep
+                )
         self.output_layer = outputDeep
         return outputDeep
 
