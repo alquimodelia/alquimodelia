@@ -36,6 +36,8 @@ class BaseBuilder:
             )(input_layer)
         if self.normalization is not None:
             input_layer = self.normalization()(input_layer)
+        if self.flatten_input:
+            input_layer = keras.layers.Flatten()(input_layer)
         return input_layer
 
     def define_model(self):
@@ -78,6 +80,7 @@ class BaseBuilder:
         output_shape: tuple = None,
         input_layer: Layer = None,
         upsampling: int = None,
+        flatten_input=False,
         **kwargs,
     ):
         # shape (N, T, H, W, C)
@@ -117,6 +120,7 @@ class BaseBuilder:
         self.output_shape = output_shape
 
         self.input_layer = input_layer
+        self.flatten_input = flatten_input
 
         self.dimensions_to_use = dimensions_to_use  # or ("T", "H", "W", "B")
         self._dimensions_to_use = self.dimensions_to_use
@@ -155,17 +159,22 @@ class BaseBuilder:
             # Should this be recheked for instances with 1 dim?
             input_shape = []
             dimension_to_use = []
+            dict_dimension_to_use = {}
             for name, size in zip(("T", "H", "W"), self.input_dimensions):
                 if size > 1:
                     input_shape.append(size)
                     dimension_to_use.append(name)
+                    dict_dimension_to_use[name] = size
             if self.channels_dimension == 0:
                 input_shape.insert(0, self.num_features_to_train)
                 dimension_to_use.insert(0, "B")
+                dict_dimension_to_use["B"] = self.num_features_to_train
             else:
                 input_shape.append(self.num_features_to_train)
                 dimension_to_use.append("B")
+                dict_dimension_to_use["B"] = self.num_features_to_train
         self.dimension_to_use = dimension_to_use
+        self.dict_dimension_to_use = dict_dimension_to_use
         return tuple(input_shape)
 
     @cached_property
@@ -192,17 +201,24 @@ class BaseBuilder:
             # Should this be recheked for instances with 1 dim?
             output_shape = []
             dimension_to_predict = []
+            dict_dimension_to_predict = {}
             for name, size in zip(("T", "H", "W"), self.output_dimensions):
                 if size > 1:
                     output_shape.append(size)
                     dimension_to_predict.append(name)
+                    dict_dimension_to_predict[name] = size
             if self.channels_dimension == 0:
                 output_shape.insert(0, self.num_classes)
                 dimension_to_predict.insert(0, "B")
+                dict_dimension_to_predict["B"] = self.num_classes
             else:
                 output_shape.append(self.num_classes)
                 dimension_to_predict.append("B")
+                dict_dimension_to_predict["B"] = self.num_classes
+
         self.dimension_to_predict = dimension_to_predict
+        self.dict_dimension_to_predict = dict_dimension_to_predict
+
         return tuple(output_shape)
 
     def opposite_data_format(self):
@@ -219,14 +235,18 @@ class SequenceBuilder(BaseBuilder):
         num_sequences: int = None,
         flatten_output=True,
         kernel_initializer="he_normal",
+        sequence_args=None,
         **kwargs,
     ):
         self.num_sequences = num_sequences
         self.flatten_output = flatten_output
         self.kernel_initializer = kernel_initializer
+        self.sequence_args = sequence_args or {}
+        self.interpretation_dense_args = None
 
         super().__init__(**kwargs)
 
+    # TODO: check how this works in the convs!
     def update_kernel(
         self,
         kernel,
@@ -262,8 +282,15 @@ class SequenceBuilder(BaseBuilder):
         # it should set the self.last_arch_layer
         input_layer = self.get_input_layer()
         sequence_layer = input_layer
+        sequence_args = self.sequence_args
+        if isinstance(self.sequence_args, list):
+            assert len(self.sequence_args) == self.num_sequences
+        elif isinstance(self.sequence_args, dict):
+            sequence_args = [sequence_args] * self.num_sequences
         for i in range(self.num_sequences):
-            sequence_layer = self.arch_block(sequence_layer)
+            sequence_layer = self.arch_block(
+                sequence_layer, **sequence_args[i]
+            )
 
         self.last_arch_layer = sequence_layer
         return sequence_layer
@@ -346,6 +373,8 @@ class SequenceBuilder(BaseBuilder):
         """
         if output_layer_args is None:
             output_layer_args = {}
+        dense_args = self.interpretation_dense_args
+
         if dense_args is None:
             dense_args = {}
             if self.activation_end != self.activation_middle:
@@ -354,7 +383,13 @@ class SequenceBuilder(BaseBuilder):
                     {"activation": self.activation_end},
                 ]
             else:
-                dense_args = {"activation": self.activation_end}
+                if isinstance(dense_args, list):
+                    dense_args[0].update(
+                        {"activation": self.activation_middle}
+                    )
+                    dense_args[1].update({"activation": self.activation_end})
+                else:
+                    dense_args.update({"activation": self.activation_end})
 
         output_layer = self.dense_block(output_layer, dense_args=dense_args)
         return output_layer
@@ -372,7 +407,3 @@ class SequenceBuilder(BaseBuilder):
                 outputDeep
             )
         self.output_layer = outputDeep
-
-    def model_setup(self):
-        # Any needed setup before building and conecting the layers
-        pass
