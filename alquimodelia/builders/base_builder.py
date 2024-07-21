@@ -6,7 +6,7 @@ from keras import ops
 from keras.layers import BatchNormalization, Dense, Layer, UpSampling2D
 from keras.models import Model
 
-
+# TODO: think of initial filters number
 class BaseBuilder:
     # Define a self so subclasses can overwrite with inputs having other names (TinEye bands -> num_features_to_train)
     num_features_to_train = None
@@ -69,6 +69,7 @@ class BaseBuilder:
         y_timesteps: int = None,
         y_height: int = None,
         y_width: int = None,
+        filters:int=None,
         activation_end: str = "sigmoid",
         activation_middle: str = "relu",
         dropout_rate: float = 0.5,
@@ -91,7 +92,7 @@ class BaseBuilder:
             self.num_features_to_train or num_features_to_train
         )  # channels
         self.input_dimensions = (self.x_timesteps, self.x_height, self.x_width)
-
+        self.filters=filters
         self.y_timesteps = y_timesteps or timesteps
         self.y_height = y_height or height
         self.y_width = y_width or width
@@ -236,6 +237,8 @@ class SequenceBuilder(BaseBuilder):
         flatten_output=True,
         kernel_initializer="he_normal",
         sequence_args=None,
+        double_interpretation=True,
+        interpretation_filters:int=None,
         **kwargs,
     ):
         self.num_sequences = num_sequences
@@ -243,6 +246,8 @@ class SequenceBuilder(BaseBuilder):
         self.kernel_initializer = kernel_initializer
         self.sequence_args = sequence_args or {}
         self.interpretation_dense_args = None
+        self.double_interpretation=double_interpretation
+        self.interpretation_filters=interpretation_filters
 
         super().__init__(**kwargs)
 
@@ -296,7 +301,7 @@ class SequenceBuilder(BaseBuilder):
         return sequence_layer
 
     def dense_block(
-        self, x, dense_args=None, filter_enlarger=4, filter_limit=200
+        self, x, dense_args=None, filter_enlarger=4, filter_limit=200, units_in = None,filters_out=None,double_dense=True, 
     ):
         """Defines the architecture block for the dense layer.
 
@@ -319,7 +324,6 @@ class SequenceBuilder(BaseBuilder):
             Output layer
         """
         default_dense_args = {"kernel_initializer": self.kernel_initializer}
-        units_in = None
         if dense_args is None:
             dense_args = default_dense_args
         if isinstance(dense_args, list):
@@ -333,25 +337,27 @@ class SequenceBuilder(BaseBuilder):
             dense_args1 = default_dense_args
             dense_args2 = default_dense_args
 
-        filters_out = dense_args2.pop("units", None)
+        filters_out = dense_args2.pop("units", filters_out)
+        filters_out = filters_out or self.num_classes
         if filters_out is None:
             if self.flatten_output:
                 filters_out = np.prod(self.model_output_shape)
             else:
                 filters_out = self.model_output_shape[-1]
+        units_in = units_in or self.interpretation_filters
         if units_in is None:
             units_in = dense_args1.pop(
                 "units",
-                max(filters_out * filter_enlarger, filter_limit),
+                min(filters_out * filter_enlarger, filter_limit),
             )
-
-        x = Dense(units_in, **dense_args1)(x)
+        if double_dense:
+            x = Dense(units_in, **dense_args1)(x)
         x = Dense(filters_out, **dense_args2)(x)
 
         return x
 
     def interpretation_layer(
-        self, output_layer, dense_args=None, output_layer_args=None
+        self, output_layer, dense_args=None, output_layer_args=None, double_interpretation=None,
     ):
         """Defines the interpretation layers for the model.
 
@@ -374,6 +380,7 @@ class SequenceBuilder(BaseBuilder):
         if output_layer_args is None:
             output_layer_args = {}
         dense_args = self.interpretation_dense_args
+        double_interpretation=double_interpretation or self.double_interpretation
 
         if dense_args is None:
             dense_args = {}
@@ -391,7 +398,7 @@ class SequenceBuilder(BaseBuilder):
                 else:
                     dense_args.update({"activation": self.activation_end})
 
-        output_layer = self.dense_block(output_layer, dense_args=dense_args)
+        output_layer = self.dense_block(output_layer, dense_args=dense_args, double_dense=double_interpretation)
         return output_layer
 
     def define_output_layer(self):

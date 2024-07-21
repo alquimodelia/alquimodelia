@@ -20,9 +20,10 @@ class UNet(CNN):
         kernel_initializer: str = "he_normal",
         attention: bool = False,
         residual: bool = False,
-        classes_method: str = "Conv",
         cropping_method: str = "crop",
         pad_temp: bool = True,
+        spatial_dropout: bool = True,
+        double_interpretation:bool=True,
         **kwargs,
     ):
         self.n_filters = n_filters
@@ -38,10 +39,9 @@ class UNet(CNN):
         # this variable is useless because this croping method is useless.
         self.pad_temp = pad_temp
 
-        self.classes_method = classes_method  # Dense || Conv
         # TODO: study a way to make cropping within the convluition at the end, this way there is less pixels to actully calculate
 
-        super().__init__(**kwargs)
+        super().__init__(spatial_dropout=spatial_dropout,double_interpretation=double_interpretation,**kwargs)
 
     def residual_block(
         self,
@@ -402,9 +402,10 @@ class UNet(CNN):
                 padding=self.padding_style,
             )(outputDeep)
         elif self.classes_method == "Dense":
-            outputDeep = keras.layers.Dense(
-                units=self.num_classes, activation=self.activation_end
-            )(outputDeep)
+            outputDeep = self.interpretation_layer(outputDeep)
+            # outputDeep = keras.layers.Dense(
+            #     units=self.num_classes, activation=self.activation_end
+            # )(outputDeep)
         return outputDeep
 
     def define_model(self):
