@@ -1,6 +1,6 @@
 import inspect
 
-from alquimodelia.builders import Transformer, UNet
+from alquimodelia.builders import CNN, FCNN, Transformer, UNet
 
 
 class ModelMagia:
@@ -43,3 +43,5 @@ class ModelMagia:
 
 ModelMagia.register(UNet)
 ModelMagia.register(Transformer)
+ModelMagia.register(CNN)
+ModelMagia.register(FCNN)
