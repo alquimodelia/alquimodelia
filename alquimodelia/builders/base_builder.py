@@ -6,6 +6,7 @@ from keras import ops
 from keras.layers import BatchNormalization, Dense, Layer, UpSampling2D
 from keras.models import Model
 
+
 # TODO: think of initial filters number
 class BaseBuilder:
     # Define a self so subclasses can overwrite with inputs having other names (TinEye bands -> num_features_to_train)
@@ -69,7 +70,7 @@ class BaseBuilder:
         y_timesteps: int = None,
         y_height: int = None,
         y_width: int = None,
-        filters:int=None,
+        filters: int = None,
         activation_end: str = "sigmoid",
         activation_middle: str = "relu",
         dropout_rate: float = 0.5,
@@ -92,7 +93,7 @@ class BaseBuilder:
             self.num_features_to_train or num_features_to_train
         )  # channels
         self.input_dimensions = (self.x_timesteps, self.x_height, self.x_width)
-        self.filters=filters
+        self.filters = filters
         self.y_timesteps = y_timesteps or timesteps
         self.y_height = y_height or height
         self.y_width = y_width or width
@@ -135,6 +136,7 @@ class BaseBuilder:
         self.model = Model(
             inputs=self.input_layer, outputs=self.output_layer, **kwargs
         )
+        self.model.summary()
 
     @cached_property
     def model_input_shape(self):
@@ -238,7 +240,7 @@ class SequenceBuilder(BaseBuilder):
         kernel_initializer="he_normal",
         sequence_args=None,
         double_interpretation=True,
-        interpretation_filters:int=None,
+        interpretation_filters: int = None,
         **kwargs,
     ):
         self.num_sequences = num_sequences
@@ -246,8 +248,8 @@ class SequenceBuilder(BaseBuilder):
         self.kernel_initializer = kernel_initializer
         self.sequence_args = sequence_args or {}
         self.interpretation_dense_args = None
-        self.double_interpretation=double_interpretation
-        self.interpretation_filters=interpretation_filters
+        self.double_interpretation = double_interpretation
+        self.interpretation_filters = interpretation_filters
 
         super().__init__(**kwargs)
 
@@ -301,7 +303,14 @@ class SequenceBuilder(BaseBuilder):
         return sequence_layer
 
     def dense_block(
-        self, x, dense_args=None, filter_enlarger=4, filter_limit=200, units_in = None,filters_out=None,double_dense=True, 
+        self,
+        x,
+        dense_args=None,
+        filter_enlarger=4,
+        filter_limit=200,
+        units_in=None,
+        filters_out=None,
+        double_dense=True,
     ):
         """Defines the architecture block for the dense layer.
 
@@ -324,6 +333,7 @@ class SequenceBuilder(BaseBuilder):
             Output layer
         """
         default_dense_args = {"kernel_initializer": self.kernel_initializer}
+        out_layer_shape = None
         if dense_args is None:
             dense_args = default_dense_args
         if isinstance(dense_args, list):
@@ -338,7 +348,7 @@ class SequenceBuilder(BaseBuilder):
             dense_args2 = default_dense_args
 
         filters_out = dense_args2.pop("units", filters_out)
-        filters_out = filters_out or self.num_classes
+        # filters_out = filters_out or self.num_classes
         if filters_out is None:
             if self.flatten_output:
                 filters_out = np.prod(self.model_output_shape)
@@ -351,13 +361,24 @@ class SequenceBuilder(BaseBuilder):
                 min(filters_out * filter_enlarger, filter_limit),
             )
         if double_dense:
+            if units_in > x.shape[-1]:
+                out_layer_shape = list(x.shape[1:])
+                out_layer_shape[-1] = filters_out
+                x = keras.layers.Flatten()(x)
+                filters_out = np.prod(self.model_output_shape)
             x = Dense(units_in, **dense_args1)(x)
         x = Dense(filters_out, **dense_args2)(x)
+        if out_layer_shape is not None:
+            x = keras.layers.Reshape(out_layer_shape)(x)
 
         return x
 
     def interpretation_layer(
-        self, output_layer, dense_args=None, output_layer_args=None, double_interpretation=None,
+        self,
+        output_layer,
+        dense_args=None,
+        output_layer_args=None,
+        double_interpretation=None,
     ):
         """Defines the interpretation layers for the model.
 
@@ -380,7 +401,9 @@ class SequenceBuilder(BaseBuilder):
         if output_layer_args is None:
             output_layer_args = {}
         dense_args = self.interpretation_dense_args
-        double_interpretation=double_interpretation or self.double_interpretation
+        double_interpretation = (
+            double_interpretation or self.double_interpretation
+        )
 
         if dense_args is None:
             dense_args = {}
@@ -398,7 +421,11 @@ class SequenceBuilder(BaseBuilder):
                 else:
                     dense_args.update({"activation": self.activation_end})
 
-        output_layer = self.dense_block(output_layer, dense_args=dense_args, double_dense=double_interpretation)
+        output_layer = self.dense_block(
+            output_layer,
+            dense_args=dense_args,
+            double_dense=double_interpretation,
+        )
         return output_layer
 
     def define_output_layer(self):

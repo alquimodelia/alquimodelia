@@ -107,7 +107,8 @@ class FCNN(SequenceBuilder):
 
             last_log_value = dimension_on_output * (self.division_base_power)
             if self.num_sequences < 1:
-                last_log_value = max(200, last_log_value)
+                last_log_value = min(200, last_log_value)
+            last_log_value = self.interpretation_filters or last_log_value
             self.interpretation_dense_args = [
                 {"units": int(last_log_value)},
                 {"units": dimension_on_output},
@@ -136,8 +137,8 @@ class FCNN(SequenceBuilder):
             )
             value_to_use = int((last_log_value - dimension_on_output) / 2)
             if self.num_sequences < 1:
-                value_to_use = max(200, value_to_use)
-
+                value_to_use = min(200, value_to_use)
+            value_to_use = self.interpretation_filters or value_to_use
             self.interpretation_dense_args = [
                 {"units": value_to_use},
                 {"units": dimension_on_output},

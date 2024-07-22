@@ -23,7 +23,7 @@ class UNet(CNN):
         cropping_method: str = "crop",
         pad_temp: bool = True,
         spatial_dropout: bool = True,
-        double_interpretation:bool=True,
+        double_interpretation: bool = True,
         **kwargs,
     ):
         self.n_filters = n_filters
@@ -41,7 +41,12 @@ class UNet(CNN):
 
         # TODO: study a way to make cropping within the convluition at the end, this way there is less pixels to actully calculate
 
-        super().__init__(spatial_dropout=spatial_dropout,double_interpretation=double_interpretation,**kwargs)
+        super().__init__(
+            spatial_dropout=spatial_dropout,
+            double_interpretation=double_interpretation,
+            flatten_output=False,
+            **kwargs,
+        )
 
     def residual_block(
         self,
