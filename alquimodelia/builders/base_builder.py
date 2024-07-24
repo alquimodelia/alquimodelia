@@ -350,7 +350,7 @@ class SequenceBuilder(BaseBuilder):
         filters_out = dense_args2.pop("units", filters_out)
         # filters_out = filters_out or self.num_classes
         if filters_out is None:
-            if self.flatten_output:
+            if self.flatten_output or len(x.shape) == 2:
                 filters_out = np.prod(self.model_output_shape)
             else:
                 filters_out = self.model_output_shape[-1]
