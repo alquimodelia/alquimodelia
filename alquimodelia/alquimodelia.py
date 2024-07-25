@@ -1,6 +1,6 @@
 import inspect
 
-from alquimodelia.builders import CNN, FCNN, Transformer, UNet
+from alquimodelia.builders import CNN, FCNN, Transformer, UNet, LSTM
 from alquimodelia.builders.base_builder import SequenceBuilder
 
 
@@ -66,3 +66,4 @@ ModelMagia.register(UNet)
 ModelMagia.register(Transformer)
 ModelMagia.register(CNN)
 ModelMagia.register(FCNN)
+ModelMagia.register(LSTM)
