@@ -116,7 +116,7 @@ class Transformer(SequenceBuilder):
         projection_dim: int = None,
         num_tokens_from_input: int = None,
         join_token_position: Layer = None,
-        num_transformer_layers: int = 6,
+        num_transformer_layers: int = None,
         num_heads: int = 4,
         transformer_units: list = None,
         tokenization_method=None,
@@ -353,6 +353,7 @@ class Transformer(SequenceBuilder):
 
     def model_setup(self):
         # Any needed setup before building and conecting the layers
+        self.num_transformer_layers = self.num_transformer_layers or self.num_sequences
         # make path_size zero if is not an image.
         if self.patch_size is not None:
             if len(self.model_input_shape) < 3:

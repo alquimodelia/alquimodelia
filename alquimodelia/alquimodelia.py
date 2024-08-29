@@ -26,6 +26,9 @@ class ModelMagia:
         numbers = "".join([word for word in model_arch if word.isdigit()])
         if len(numbers) > 0:
             model_arch = model_arch.replace(numbers, "")
+        if "transformer" in model_arch:
+            interpretation_method_name = model_arch.replace("transformer", "")
+            model_arch = model_arch.replace(interpretation_method_name, "")              
         model_class = ModelMagia.registry[model_arch]
 
         instance = super().__new__(model_class)
@@ -45,6 +48,8 @@ class ModelMagia:
             model_kwargs["interpretation_filters"] = interpretation_filters
         if model_arch == "fcnn":
             print("sss")
+        if len(interpretation_method_name)>0:
+            model_kwargs["interpretation_method"] = ModelMagia.registry[interpretation_method_name]
         for name, method in cls.__dict__.items():
             if "__" in name:
                 continue
