@@ -1,12 +1,16 @@
 import os
 
 os.environ["KERAS_BACKEND"] = "torch"
+from inspect import signature
+
 import keras
 import numpy as np
 from keras import layers, ops
 from keras.layers import Add, Concatenate, Layer
 
-from alquimodelia.builders.base_builder import BaseBuilder
+from alquimodelia.builders.base_builder import BaseBuilder, SequenceBuilder
+from alquimodelia.builders.cnn import CNN
+from alquimodelia.builders.fcnn import FCNN
 
 # TODO: it all
 # This class should be able to build the 3 archs in: https://keras.io/examples/vision/image_classification_using_global_context_vision_transformer/
@@ -46,6 +50,7 @@ class Patches(layers.Layer):
 
 
 class TubeletEmbedding(layers.Layer):
+    # BUG: if the patch size is smaller then one dimension it goes to zero
     def __init__(self, embed_dim, patch_size, **kwargs):
         super().__init__(**kwargs)
         self.projection = layers.Conv3D(
@@ -83,7 +88,29 @@ class PositionEmbedding(layers.Layer):
         return positions_embeded
 
 
-class Transformer(BaseBuilder):
+def get_valid_parameters_of_class(class_name):
+    all_signatures = []
+    current_class = class_name
+    while True:
+        sig = signature(current_class.__init__)
+        all_signatures.append(sig)
+
+        parent_classes = current_class.__bases__
+        if not parent_classes:
+            break
+
+        current_class = parent_classes[0]
+
+    # Combine all signatures into a single dictionary
+    combined_params = {}
+    for s in all_signatures:
+        for param in s.parameters.values():
+            if param.name not in combined_params:
+                combined_params[param.name] = param.default
+    return combined_params
+
+
+class Transformer(SequenceBuilder):
     def __init__(
         self,
         projection_dim: int = None,
@@ -96,6 +123,8 @@ class Transformer(BaseBuilder):
         vector_tokens: bool = True,
         patch_size: int = None,
         use_embedding: bool = None,
+        # TODO: change this interpretation, now I will feccth a cnn or a fcnn
+        interpretation_method=None,
         # filters:int=None,
         **kwargs,
     ):
@@ -118,6 +147,7 @@ class Transformer(BaseBuilder):
         #     self.projection_dim,
         # ]
         self.vector_tokens = vector_tokens
+        self.interpretation_method = interpretation_method or CNN
         super().__init__(**kwargs)
 
     def get_input_layer(self):
@@ -232,16 +262,93 @@ class Transformer(BaseBuilder):
         embedding_tokens = self.embedding(tokens)
         # On a straight out transformer this is the Attention block
         encoded_tokens = self.encoder_block(embedding_tokens)
+        # encoded_tokens = self.match_layer_to_output(encoded_tokens)
+
         self.last_arch_layer = encoded_tokens
         return encoded_tokens
 
     def define_output_layer(self):
-        # This should only deal with the last layer, it can be used to define the classification for instance, or multiple methods to close the model
-        # it should use the last_arch_layer
-        # it should define self.output_layer
-        enconded_tokens = self.last_arch_layer
-        output_layer = self.mlp(enconded_tokens)
-        self.output_layer = output_layer
+        encoded_tokens = self.last_arch_layer
+        original_args = self.__dict__
+        inter_args = get_valid_parameters_of_class(self.interpretation_method)
+        original_args = {
+            k: v for k, v in original_args.items() if k in inter_args.keys()
+        }
+        original_args = {
+            k: v for k, v in original_args.items() if v is not None
+        }
+        original_args = {
+            k: v
+            for k, v in original_args.items()
+            if not isinstance(v, keras.KerasTensor)
+        }
+
+        interpretation_model = self.interpretation_method(
+            input_layer=encoded_tokens, **original_args
+        )
+
+        self.output_layer = interpretation_model.output_layer
+
+    def match_layer_to_output(self, output_layer):
+
+        out_shape_diff = (
+            len(self.model_output_shape) + 1 - len(output_layer.shape)
+        )
+        if len(output_layer.shape) < len(self.model_output_shape) + 1:
+            axis_to_expand = [-i for i in range(1, 1 + out_shape_diff)]
+            output_layer = ops.expand_dims(output_layer, axis=axis_to_expand)
+
+            h_out = self.dict_dimension_to_predict["H"]
+            w_out = self.dict_dimension_to_predict["W"]
+
+            h_in = output_layer.shape[1]
+            w_in = output_layer.shape[2]
+
+            num_pixels_out = ops.prod(self.model_output_shape)
+            num_pixels_in = ops.prod(output_layer.shape[1:])
+
+            h_diff = h_in - h_out
+            w_diff = w_in - w_out
+            # if num_pixels_in<num_pixels_out:
+
+            #     ratio_pixel = num_pixels_out/num_pixels_in
+            #     h_reshape = h_out/ratio_pixel
+            #     w_reshape = w_out/ratio_pixel
+
+            if h_diff > 0:
+                output_layer = layers.Conv2D(
+                    self.interpretation_filters,
+                    kernel_size=(abs(h_diff) + 1, 1),
+                    strides=1,
+                    padding="valid",
+                )(output_layer)
+            if w_diff > 0:
+                output_layer = layers.Conv2D(
+                    self.interpretation_filters,
+                    kernel_size=(1, abs(w_diff) + 1),
+                    strides=1,
+                    padding="valid",
+                )(output_layer)
+
+            if h_diff < 0:
+                output_layer = layers.Conv2DTranspose(
+                    self.interpretation_filters,
+                    kernel_size=(abs(h_diff) + 1, 1),
+                    strides=1,
+                    padding="valid",
+                )(output_layer)
+            if w_diff < 0:
+                output_layer = layers.Conv2DTranspose(
+                    self.interpretation_filters,
+                    kernel_size=(1, abs(w_diff) + 1),
+                    strides=1,
+                    padding="valid",
+                )(output_layer)
+
+        # TODO: make this interpretation layer something like the CNN
+        # output_layer=self.interpretation_layer(output_layer)
+        # output_layer = self.mlp(output_layer, hidden_units=[self.num_classes*2,self.num_classes])
+
         return output_layer
 
     def model_setup(self):
@@ -252,6 +359,7 @@ class Transformer(BaseBuilder):
                 self.patch_size = None
 
         # TODO: define whats comming for output
+        # self.flatten_output=True
 
 
 # input_args = {
@@ -265,8 +373,25 @@ class Transformer(BaseBuilder):
 #     "vector_tokens":True,
 #     "num_transformer_layers":1,
 #     "patch_size":12,
+#     "interpretation_filters":200,
 # }
 
+# # input_args = {
+# #     "x_timesteps": 8,  # Number of sentinel images
+# #     "y_timesteps": 1,  # Number of volume maps
+# #     "num_features_to_train": 12,  # Number of sentinel bands
+# #     "num_classes": 1,  # We just want to predict the volume linearly
+# #     "height":128,
+# #     "width":128,
+# #     "num_tokens_from_input":None,
+# #     "vector_tokens":True,
+# #     "num_transformer_layers":1,
+# #     "patch_size":8,
+# #     "interpretation_filters":200,
+
+# # }
+
+# # cnn = CNN(**input_args)
 # transformer = Transformer(#model_arch="transformer",
 #                           **input_args)
 # transformer.model.summary()

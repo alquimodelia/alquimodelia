@@ -13,7 +13,7 @@ class BaseBuilder:
     num_features_to_train = None
     num_classes = None
 
-    def _derive_from_input_layer(self, input_shape):
+    def _derive_from_input_layer(self, input_shape=None):
         input_shape = input_shape or ops.shape(self.input_layer)
         # TODO:
         pass
@@ -21,11 +21,10 @@ class BaseBuilder:
     def define_input_layer(self):
         # This is the base for an input layer. It can be overwrite, but it should set this variable
         # TODO: if there is an input layer, derive the other properties from this
-        if self.input_layer:
+        if self.input_layer is not None:
             self._derive_from_input_layer()
-        self.input_layer = self.input_layer or keras.Input(
-            self.model_input_shape
-        )
+        else:
+            self.input_layer = keras.Input(self.model_input_shape)
 
     def get_input_layer(self):
         # This is to get the layer to enter the arch, here you can add augmentation or other processing
@@ -80,7 +79,7 @@ class BaseBuilder:
         dimension_to_predict=None,
         input_shape: tuple = None,
         output_shape: tuple = None,
-        input_layer: Layer = None,
+        input_layer=None,
         upsampling: int = None,
         flatten_input=False,
         **kwargs,
