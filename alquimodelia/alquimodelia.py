@@ -1,6 +1,6 @@
 import inspect
 
-from alquimodelia.builders import CNN, FCNN, Transformer, UNet, LSTM
+from alquimodelia.builders import CNN, FCNN, LSTM, Transformer, UNet
 from alquimodelia.builders.base_builder import SequenceBuilder
 
 
