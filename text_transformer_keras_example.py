@@ -113,7 +113,7 @@ outputs = layers.Dense(2, activation="softmax")(x)
 
 model = keras.Model(inputs=inputs, outputs=outputs)
 
-
+print(model.summary())
 """
 ## Train and Evaluate
 """

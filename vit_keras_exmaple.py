@@ -24,7 +24,7 @@ image patches, without using convolution layers.
 
 import os
 
-os.environ["KERAS_BACKEND"] = "jax"  # @param ["tensorflow", "jax", "torch"]
+os.environ["KERAS_BACKEND"] = "torch"  # @param ["tensorflow", "jax", "torch"]
 
 import keras
 import matplotlib.pyplot as plt
