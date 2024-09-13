@@ -38,6 +38,7 @@ class UNet(CNN):
         # TODO: this variable is based on some shity assumtions
         # this variable is useless because this croping method is useless.
         self.pad_temp = pad_temp
+        self.extra_crop=None
 
         # TODO: study a way to make cropping within the convluition at the end, this way there is less pixels to actully calculate
 
@@ -247,6 +248,25 @@ class UNet(CNN):
             ccc_shape = contracted_layers[c].shape
             expansion_arguments_to_use = {**expansion_arguments}
             if iteration_counter == self.number_of_conv_layers:
+                if self.cropping_method == "contraction_final_4_2":
+                    expansion_arguments_to_use.update(
+                        {
+                            "padding_conv_one": "valid",
+                            "padding_conv_two": "valid",
+                            "kernel_size_conv_one": (
+                                1,
+                                int((self.kernel_size + self.padding + 2) / 2),
+                                int((self.kernel_size + self.padding + 2) / 2),
+                            ),
+                            "kernel_size_conv_two": (
+                                1,
+                                int((self.kernel_size + self.padding + 2) / 2),
+                                int((self.kernel_size + self.padding + 2) / 2),
+                            ),
+                        }
+                    )
+                    self.extra_crop=1
+
                 if self.cropping_method == "contraction_final_4":
                     expansion_arguments_to_use.update(
                         {
@@ -270,11 +290,9 @@ class UNet(CNN):
                             # "n_filters_two":self.num_classes, #TODO: latest last shape
                         }
                     )
-                    print(22)
             c4 = self.expansive_block(
                 list_c[i], contracted_layers[c], **expansion_arguments_to_use
             )
-            c4_shape = c4.shape
             list_c.append(c4)
         return c4
 
@@ -446,6 +464,15 @@ class UNet(CNN):
                     data_format=self.opposite_data_format(),
                     padding="valid",
                 )(outputDeep)
+            if self.cropping_method == "contraction_final_1_2":
+                outputDeep = self.Conv(
+                    self.y_timesteps,
+                    self.kernel_size + self.padding,
+                    activation=self.activation_end,
+                    data_format=self.opposite_data_format(),
+                    padding="valid",
+                )(outputDeep)
+                self.extra_crop=1
             if self.cropping_method == "contraction_final_2":
                 outputDeep = self.Conv(
                     self.y_timesteps,
@@ -481,6 +508,11 @@ class UNet(CNN):
                 outputDeep = self.Cropping(cropping=self.cropping_tuple)(
                     outputDeep
                 )
+        if self.extra_crop:
+            outputDeep = self.Cropping(cropping=((0,0),(self.extra_crop,self.extra_crop),(self.extra_crop,self.extra_crop)))(
+                outputDeep
+            )
+
         self.output_layer = outputDeep
         return outputDeep
 
