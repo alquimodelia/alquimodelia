@@ -12,10 +12,42 @@ alquimodelia.builders.base\_builder module
    :undoc-members:
    :show-inheritance:
 
+alquimodelia.builders.cnn module
+--------------------------------
+
+.. automodule:: alquimodelia.builders.cnn
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+alquimodelia.builders.fcnn module
+---------------------------------
+
+.. automodule:: alquimodelia.builders.fcnn
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+alquimodelia.builders.lstm module
+---------------------------------
+
+.. automodule:: alquimodelia.builders.lstm
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 alquimodelia.builders.transformer module
 ----------------------------------------
 
 .. automodule:: alquimodelia.builders.transformer
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+alquimodelia.builders.tryouts module
+------------------------------------
+
+.. automodule:: alquimodelia.builders.tryouts
    :members:
    :undoc-members:
    :show-inheritance:
