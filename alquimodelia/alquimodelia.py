@@ -26,7 +26,7 @@ class ModelMagia:
         numbers = "".join([word for word in model_arch if word.isdigit()])
         if len(numbers) > 0:
             model_arch = model_arch.replace(numbers, "")
-        interpretation_method_name=""
+        interpretation_method_name = ""
         if "transformer" in model_arch:
             interpretation_method_name = model_arch.replace("transformer", "")
             model_arch = model_arch.replace(interpretation_method_name, "")              
