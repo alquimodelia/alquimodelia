@@ -248,7 +248,7 @@ class UNet(CNN):
             ccc_shape = contracted_layers[c].shape
             expansion_arguments_to_use = {**expansion_arguments}
             if iteration_counter == self.number_of_conv_layers:
-                if self.cropping_method == "contraction_final_4_2":
+                if self.cropping_method == "contraction_final_4_2": # it is smooth, still not sure if plausable to keep
                     expansion_arguments_to_use.update(
                         {
                             "padding_conv_one": "valid",
@@ -267,7 +267,7 @@ class UNet(CNN):
                     )
                     self.extra_crop=1
 
-                if self.cropping_method == "contraction_final_4":
+                if self.cropping_method == "contraction_final_4": # it maintains the limit problem, remove
                     expansion_arguments_to_use.update(
                         {
                             "padding_conv_one": "valid",
@@ -456,7 +456,7 @@ class UNet(CNN):
             # TODO: this might not work on all 1D, 2D...
             # TODO: a transpose or reshape might be a better alternative if no GPU is available
             # On torch it seems to work on CPU.
-            if self.cropping_method == "contraction_final":
+            if self.cropping_method == "contraction_final": # it maintains the limit problem, remove
                 outputDeep = self.Conv(
                     self.y_timesteps,
                     self.kernel_size + self.padding + 2,
@@ -464,7 +464,7 @@ class UNet(CNN):
                     data_format=self.opposite_data_format(),
                     padding="valid",
                 )(outputDeep)
-            if self.cropping_method == "contraction_final_1_2":
+            if self.cropping_method == "contraction_final_1_2": # it is smooth, still not sure if plausable to keep
                 outputDeep = self.Conv(
                     self.y_timesteps,
                     self.kernel_size + self.padding,
@@ -473,7 +473,7 @@ class UNet(CNN):
                     padding="valid",
                 )(outputDeep)
                 self.extra_crop=1
-            if self.cropping_method == "contraction_final_2":
+            if self.cropping_method == "contraction_final_2": # Not good remove on future implementation
                 outputDeep = self.Conv(
                     self.y_timesteps,
                     (
