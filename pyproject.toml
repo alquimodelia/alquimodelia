@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "alquimodelia"
-version = "0.0.3"
-description = "Keras based Forescast model builder"
+version = "0.0.4"
+description = "Keras based model builder"
 authors = ["João Santos <jotaflame@gmail.com>"]
 readme = "README.md"
 license = "LICENSE"

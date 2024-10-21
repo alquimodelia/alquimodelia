@@ -177,6 +177,9 @@ class BaseBuilder:
                 dict_dimension_to_use["B"] = self.num_features_to_train
         self.dimension_to_use = dimension_to_use
         self.dict_dimension_to_use = dict_dimension_to_use
+        hw_count = sum([1 if d in dimension_to_use else 0 for d in ['H', 'W']])
+        t_count = 1 if 'T' in dimension_to_use else 0
+        self.input_num_dims = hw_count + t_count
         return tuple(input_shape)
 
     @cached_property
@@ -220,6 +223,9 @@ class BaseBuilder:
 
         self.dimension_to_predict = dimension_to_predict
         self.dict_dimension_to_predict = dict_dimension_to_predict
+        hw_count = sum([1 if d in dimension_to_predict else 0 for d in ['H', 'W']])
+        t_count = 1 if 'T' in dimension_to_predict else 0
+        self.output_num_dims = hw_count + t_count
 
         return tuple(output_shape)
 
@@ -440,3 +446,25 @@ class SequenceBuilder(BaseBuilder):
                 outputDeep
             )
         self.output_layer = outputDeep
+
+
+    @cached_property
+    def conv_dimension(self):
+        # 1D, 2D, or 3D convulutions
+        return len(self.model_input_shape) - 1
+
+    def classes_collapse(self, outputDeep):
+        if self.classes_method.lower() == "conv":
+            outputDeep = self.Conv(
+                self.num_classes,
+                self.kernel_size,
+                activation=self.activation_end,
+                data_format=self.data_format,
+                padding=self.padding_style,
+            )(outputDeep)
+        elif self.classes_method.lower() == "dense":
+            outputDeep = self.interpretation_layer(outputDeep)
+            # outputDeep = keras.layers.Dense(
+            #     units=self.num_classes, activation=self.activation_end
+            # )(outputDeep)
+        return outputDeep

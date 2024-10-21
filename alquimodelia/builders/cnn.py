@@ -74,10 +74,6 @@ class CNN(SequenceBuilder):
 
         return self._number_of_conv_layers
 
-    @cached_property
-    def conv_dimension(self):
-        # 1D, 2D, or 3D convulutions
-        return len(self.model_input_shape) - 1
 
     def arch_block(
         self,
