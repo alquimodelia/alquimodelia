@@ -82,6 +82,8 @@ class BaseBuilder:
         input_layer=None,
         upsampling: int = None,
         flatten_input=False,
+        padding: int = 0,
+        classes_method: str = "Dense",
         **kwargs,
     ):
         # shape (N, T, H, W, C)
@@ -127,6 +129,8 @@ class BaseBuilder:
         self._dimensions_to_use = self.dimensions_to_use
         self.dimension_to_predict = dimension_to_predict
         self._dimension_to_predict = self.dimension_to_predict
+        self.padding = padding
+        self.classes_method = classes_method  # Dense || Conv
 
         self.model_setup()
         self.define_input_layer()
@@ -135,7 +139,6 @@ class BaseBuilder:
         self.model = Model(
             inputs=self.input_layer, outputs=self.output_layer, **kwargs
         )
-        self.model.summary()
 
     @cached_property
     def model_input_shape(self):

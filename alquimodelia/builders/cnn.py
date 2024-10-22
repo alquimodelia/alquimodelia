@@ -15,14 +15,10 @@ class CNN(SequenceBuilder):
         self,
         number_of_conv_layers: int = 0,
         spatial_dropout: bool = False,
-        padding: int = 0,
-        classes_method: str = "Dense",
         **kwargs,
     ):
         self.spatial_dropout = spatial_dropout
         self._number_of_conv_layers = number_of_conv_layers
-        self.padding = padding
-        self.classes_method = classes_method  # Dense || Conv
         super().__init__(**kwargs)
 
     def model_setup(self):
