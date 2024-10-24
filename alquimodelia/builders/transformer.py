@@ -51,7 +51,7 @@ class Patches(layers.Layer):
 
 
 class TubeletEmbedding(layers.Layer):
-    # BUG: if the patch size is smaller then one dimension it goes to zero
+    # BUG: if the patch size is bigger then one dimension it goes to zero
     def __init__(self, embed_dim, patch_size, **kwargs):
         super().__init__(**kwargs)
         self.projection = layers.Conv3D(
@@ -60,10 +60,12 @@ class TubeletEmbedding(layers.Layer):
             strides=patch_size,
             padding="VALID",
         )
+        self.flatten = layers.Reshape(target_shape=(-1, embed_dim))
 
     def call(self, videos):
         projected_patches = self.projection(videos)
-        return projected_patches
+        flattened_patches = self.flatten(projected_patches)
+        return flattened_patches
 
 
 class PositionEmbedding(layers.Layer):
@@ -130,9 +132,9 @@ class Transformer(SequenceBuilder):
         # filters:int=None,
         **kwargs,
     ):
-        self.num_tokens_from_input = num_tokens_from_input
+        self.num_tokens_from_input = num_tokens_from_input or kwargs.pop("n_filters",None)
         self.projection_dim = (
-            projection_dim or num_tokens_from_input  # or filters
+            projection_dim or self.num_tokens_from_input  # or filters
         )  # TODO: this should be taken out of inputshape if none of those exist
         if isinstance(join_token_position, str):
             join_token_position = getattr(layers, join_token_position)
@@ -141,7 +143,7 @@ class Transformer(SequenceBuilder):
         self.num_heads = num_heads
         self.transformer_units = transformer_units
         self.tokenization_method = tokenization_method
-        self.patch_size = patch_size
+        self.patch_size = patch_size # TODO: make this smaller than the dims time, h, w
         self.use_embedding = use_embedding
         self.explode_method=explode_method
 
@@ -172,6 +174,7 @@ class Transformer(SequenceBuilder):
         if self.projection_dim is None:
             self.projection_dim = input_layer.shape[-1]
 
+        if self.transformer_units is None:
             self.transformer_units = [
                 self.projection_dim * 2,
                 self.projection_dim,
@@ -462,7 +465,7 @@ class Transformer(SequenceBuilder):
 # }
 
 # input_args = {
-#     "x_timesteps": 8,  # Number of sentinel images
+#     "x_timesteps": 12,  # Number of sentinel images
 #     "y_timesteps": 1,  # Number of volume maps
 #     "num_features_to_train": 12,  # Number of sentinel bands
 #     "num_classes": 1,  # We just want to predict the volume linearly
@@ -471,9 +474,10 @@ class Transformer(SequenceBuilder):
 #     "num_tokens_from_input":None,
 #     "vector_tokens":True,
 #     "num_transformer_layers":6,
-#     "patch_size":8,
+#     "patch_size":12,
 #     "interpretation_method":"dense",
-#     "explode_method":1
+#     "explode_method":1,
+#     "n_filters":16,
 
 # }
 
