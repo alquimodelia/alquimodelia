@@ -3,7 +3,7 @@ from functools import cached_property
 import keras
 import numpy as np
 from keras import ops
-from keras.layers import BatchNormalization, Dense, Layer, UpSampling2D
+from keras.layers import BatchNormalization, Dense, Layer, UpSampling2D, Dropout
 from keras.models import Model
 
 
@@ -72,7 +72,7 @@ class BaseBuilder:
         filters: int = None,
         activation_end: str = "sigmoid",
         activation_middle: str = "relu",
-        dropout_rate: float = 0.5,
+        dropout_rate: float = 0.3,
         data_format: str = "channels_last",
         normalization: Layer = None,  # The normalization Layer to apply
         dimensions_to_use=None,
@@ -331,6 +331,7 @@ class SequenceBuilder(BaseBuilder):
         x: keras.layer
             Output layer
         """
+        #BUG: only working as last layer, is not working in stacked situations
         default_dense_args = {"kernel_initializer": self.kernel_initializer}
         out_layer_shape = None
         if dense_args is None:
@@ -366,7 +367,9 @@ class SequenceBuilder(BaseBuilder):
                 x = keras.layers.Flatten()(x)
                 filters_out = np.prod(self.model_output_shape)
             x = Dense(units_in, **dense_args1)(x)
+            x = Dropout(self.dropout_rate)(x)
         x = Dense(filters_out, **dense_args2)(x)
+        x = Dropout(self.dropout_rate)(x)
         if out_layer_shape is not None:
             x = keras.layers.Reshape(out_layer_shape)(x)
 

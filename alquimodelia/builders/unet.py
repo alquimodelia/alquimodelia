@@ -157,7 +157,7 @@ class UNet(CNN):
         cii,
         n_filters: int = 16,
         normalization: bool = True,
-        dropout_rate: float = 0.5,
+        dropout_rate: float = 0.3,
         kernel_size: int = 3,
         strides: int = 2,
         data_format: str = "channels_first",

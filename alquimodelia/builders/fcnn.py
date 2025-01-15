@@ -89,22 +89,47 @@ class FCNN(SequenceBuilder):
         if self.division_per_dim:
             if self.number_division > 2:
                 for i in range(0, (self.number_division - 2), 2):
-                    self.sequence_args.append(
-                        {
-                            "dense_args": [
-                                {
-                                    "units": dimension_on_output
-                                    * (self.division_base_power ** (i + 3))
-                                },
-                                {
-                                    "units": dimension_on_output
-                                    * (self.division_base_power ** (i + 2))
-                                },
-                            ]
-                        }
+                    self.sequence_args.append(dimension_on_output* (self.division_base_power ** (i + 2))
+                        # {
+                        #     "dense_args": [
+                        #         {
+                        #             "units": dimension_on_output
+                        #             * (self.division_base_power ** (i + 3))
+                        #         },
+                        #         {
+                        #             "units": dimension_on_output
+                        #             * (self.division_base_power ** (i + 2))
+                        #         },
+                        #     ]
+                        # }
                     )
-                self.sequence_args.reverse()
+                    self.sequence_args.append(dimension_on_output* (self.division_base_power ** (i + 3)))
 
+                self.sequence_args.reverse()
+                if max(self.sequence_args)>dimension_on_input:
+
+                    max_sequence = min(dimension_on_input, max(self.sequence_args))
+                    min_sequence = max(dimension_on_output, min(self.sequence_args))
+                    # This is repeated so we have what would be the second after the dimension in
+                    sequence_args = min_sequence+(((self.sequence_args-min(self.sequence_args))*(max_sequence-min_sequence))/(max(self.sequence_args)-min(self.sequence_args)))
+                    sequence_args = [int(f) for f in sequence_args]
+                    max_sequence = sequence_args[1]
+                    self.sequence_args = min_sequence+(((self.sequence_args-min(self.sequence_args))*(max_sequence-min_sequence))/(max(self.sequence_args)-min(self.sequence_args)))
+                    self.sequence_args = [int(f) for f in self.sequence_args]
+
+                sequence_args = []
+                for i in range(0, len(self.sequence_args), 2):
+                    sequence_args.append({
+                        "dense_args": [
+                            {
+                                "units": self.sequence_args[i]
+                            },
+                            {
+                                "units": self.sequence_args[i+1]
+                            },
+                        ]
+                    })
+                self.sequence_args=sequence_args
             last_log_value = dimension_on_output * (self.division_base_power)
             if self.num_sequences < 1:
                 last_log_value = min(200, last_log_value)
@@ -143,3 +168,4 @@ class FCNN(SequenceBuilder):
                 {"units": value_to_use},
                 {"units": dimension_on_output},
             ]
+        
