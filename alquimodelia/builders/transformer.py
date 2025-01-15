@@ -7,6 +7,7 @@ import keras
 import numpy as np
 from keras import layers, ops
 from keras.layers import Add, Concatenate, Layer
+import math
 
 from alquimodelia.builders.base_builder import BaseBuilder, SequenceBuilder
 from alquimodelia.builders.cnn import CNN
@@ -50,7 +51,7 @@ class Patches(layers.Layer):
 
 
 class TubeletEmbedding(layers.Layer):
-    # BUG: if the patch size is smaller then one dimension it goes to zero
+    # BUG: if the patch size is bigger then one dimension it goes to zero
     def __init__(self, embed_dim, patch_size, **kwargs):
         super().__init__(**kwargs)
         self.projection = layers.Conv3D(
@@ -59,10 +60,12 @@ class TubeletEmbedding(layers.Layer):
             strides=patch_size,
             padding="VALID",
         )
+        self.flatten = layers.Reshape(target_shape=(-1, embed_dim))
 
     def call(self, videos):
         projected_patches = self.projection(videos)
-        return projected_patches
+        flattened_patches = self.flatten(projected_patches)
+        return flattened_patches
 
 
 class PositionEmbedding(layers.Layer):
@@ -125,12 +128,13 @@ class Transformer(SequenceBuilder):
         use_embedding: bool = None,
         # TODO: change this interpretation, now I will feccth a cnn or a fcnn
         interpretation_method=None,
+        explode_method=1,
         # filters:int=None,
         **kwargs,
     ):
-        self.num_tokens_from_input = num_tokens_from_input
+        self.num_tokens_from_input = num_tokens_from_input or kwargs.pop("n_filters",None)
         self.projection_dim = (
-            projection_dim or num_tokens_from_input  # or filters
+            projection_dim or self.num_tokens_from_input  # or filters
         )  # TODO: this should be taken out of inputshape if none of those exist
         if isinstance(join_token_position, str):
             join_token_position = getattr(layers, join_token_position)
@@ -139,14 +143,21 @@ class Transformer(SequenceBuilder):
         self.num_heads = num_heads
         self.transformer_units = transformer_units
         self.tokenization_method = tokenization_method
-        self.patch_size = patch_size
+        self.patch_size = patch_size # TODO: make this smaller than the dims time, h, w
         self.use_embedding = use_embedding
+        self.explode_method=explode_method
 
         # or [
         #     self.projection_dim * 2,
         #     self.projection_dim,
         # ]
         self.vector_tokens = vector_tokens
+        if isinstance(interpretation_method, str):
+            interpretation_method_name=interpretation_method
+            if interpretation_method.lower()=="dense" or interpretation_method.lower()=="conv":
+                interpretation_method_name="classes_collapse"
+                self.classes_method=interpretation_method.lower()
+            interpretation_method = getattr(self,interpretation_method_name)
         self.interpretation_method = interpretation_method or CNN
         super().__init__(**kwargs)
 
@@ -163,6 +174,7 @@ class Transformer(SequenceBuilder):
         if self.projection_dim is None:
             self.projection_dim = input_layer.shape[-1]
 
+        if self.transformer_units is None:
             self.transformer_units = [
                 self.projection_dim * 2,
                 self.projection_dim,
@@ -258,11 +270,13 @@ class Transformer(SequenceBuilder):
 
     def define_model(self):
         input_layer = self.get_input_layer()
+        input_num_pixels = np.prod(input_layer.shape[1:])
         tokens = self.tokenization(input_layer)
+        tokens_num_pixels = np.prod(tokens.shape[1:])
         embedding_tokens = self.embedding(tokens)
+        embedding_tokens_num_pixels = np.prod(embedding_tokens.shape[1:])
         # On a straight out transformer this is the Attention block
         encoded_tokens = self.encoder_block(embedding_tokens)
-        # encoded_tokens = self.match_layer_to_output(encoded_tokens)
 
         self.last_arch_layer = encoded_tokens
         return encoded_tokens
@@ -270,7 +284,10 @@ class Transformer(SequenceBuilder):
     def define_output_layer(self):
         encoded_tokens = self.last_arch_layer
         original_args = self.__dict__
-        inter_args = get_valid_parameters_of_class(self.interpretation_method)
+        if isinstance(self.interpretation_method, type):
+            inter_args = get_valid_parameters_of_class(self.interpretation_method)
+        else:
+            inter_args={}
         original_args = {
             k: v for k, v in original_args.items() if k in inter_args.keys()
         }
@@ -282,21 +299,69 @@ class Transformer(SequenceBuilder):
             for k, v in original_args.items()
             if not isinstance(v, keras.KerasTensor)
         }
+        output_model_shape = self.model_output_shape
 
-        interpretation_model = self.interpretation_method(
-            input_layer=encoded_tokens, **original_args
-        )
+        if self.output_num_dims>1:
+            self.flatten_output=False
 
-        self.output_layer = interpretation_model.output_layer
+            if self.explode_method ==1:
+                # Reshape into 2D feature maps
+                current_num_pixels= np.prod(encoded_tokens.shape[1:])
+                h_reshape = self.dict_dimension_to_use["H"]//self.patch_size
+                w_reshape = self.dict_dimension_to_use["W"]//self.patch_size
+                channels_reshape = current_num_pixels// (h_reshape*w_reshape)
+                x = layers.Reshape((h_reshape, w_reshape, channels_reshape))(encoded_tokens)
+                counter_h = int(math.ceil(math.log2(self.dict_dimension_to_predict["H"] / h_reshape)))
+                counter_w = int(math.ceil(math.log2(self.dict_dimension_to_predict["W"] / w_reshape)))
+                last_num_channels = max(2**self.num_classes, self.num_features_to_train)
+                filters_list = [last_num_channels]
+                for i in range(max(counter_w, counter_h)-1):
+                    filters_list.append(filters_list[-1]*2)
+                filters_list.reverse()
+                for i in range(max(counter_w, counter_h)):
+                    conv_filter = filters_list[i]
+                    strides_conv = [2,2]
+                    if i >= counter_h:
+                        strides_conv[0]=0
+                    if i >= counter_w:
+                        strides_conv[1]=0
+                    strides_conv = tuple(strides_conv)
+                    x = layers.Conv2DTranspose(conv_filter, 3, strides=strides_conv, padding="same", activation="relu")(x)
+
+                encoded_tokens = layers.Reshape((1,*x.shape[1:]))(x)
+            elif self.explode_method==2:
+                encoded_tokens = self.match_layer_to_output(encoded_tokens)
+
+            # # Decoder: Upsample the output to match the original image size
+            # x1 = layers.Conv2DTranspose(128, 3, strides=2, padding="same", activation="relu")(x)
+            # x = layers.Conv2DTranspose(64, 3, strides=2, padding="same", activation="relu")(x)
+            # x = layers.Conv2DTranspose(32, 3, strides=2, padding="same", activation="relu")(x)
+
+            # # Output segmentation map
+            # outputs = layers.Conv2D(num_classes, 1, activation="softmax")(x)
+
+        # TODO: mass transformer as decoder
+        if isinstance(self.interpretation_method, type):
+            if issubclass(self.interpretation_method, SequenceBuilder):
+                interpretation_model = self.interpretation_method(
+                    input_layer=encoded_tokens, **original_args
+                    )
+                self.output_layer = interpretation_model.output_layer
+
+        else:
+            self.output_layer = self.interpretation_method(encoded_tokens)
+
+
 
     def match_layer_to_output(self, output_layer):
-
+        # TODO: not working
         out_shape_diff = (
             len(self.model_output_shape) + 1 - len(output_layer.shape)
         )
         if len(output_layer.shape) < len(self.model_output_shape) + 1:
             axis_to_expand = [-i for i in range(1, 1 + out_shape_diff)]
-            output_layer = ops.expand_dims(output_layer, axis=axis_to_expand)
+            for ax_exp in axis_to_expand:
+                output_layer = ops.expand_dims(output_layer, axis=ax_exp)
 
             h_out = self.dict_dimension_to_predict["H"]
             w_out = self.dict_dimension_to_predict["W"]
@@ -358,6 +423,28 @@ class Transformer(SequenceBuilder):
         if self.patch_size is not None:
             if len(self.model_input_shape) < 3:
                 self.patch_size = None
+        self.Conv = getattr(keras.layers, f"Conv{self.conv_dimension}D")
+        self.ConvTranspose = getattr(
+            keras.layers, f"Conv{self.conv_dimension}DTranspose"
+        )
+        self.MaxPooling = getattr(
+            keras.layers, f"MaxPooling{self.conv_dimension}D"
+        )
+        self.UpSampling = getattr(
+            keras.layers, f"UpSampling{self.conv_dimension}D"
+        )
+        # if self.spatial_dropout:
+        #     self.Dropout = getattr(
+        #         keras.layers, f"SpatialDropout{self.conv_dimension}D"
+        #     )
+        # else:
+        #     self.Dropout = keras.layers.Dropout
+        self.Cropping = getattr(
+            keras.layers, f"Cropping{self.conv_dimension}D"
+        )
+        self.kernel_size=3
+        self.padding_style="same"
+
 
         # TODO: define whats comming for output
         # self.flatten_output=True
@@ -377,22 +464,23 @@ class Transformer(SequenceBuilder):
 #     "interpretation_filters":200,
 # }
 
-# # input_args = {
-# #     "x_timesteps": 8,  # Number of sentinel images
-# #     "y_timesteps": 1,  # Number of volume maps
-# #     "num_features_to_train": 12,  # Number of sentinel bands
-# #     "num_classes": 1,  # We just want to predict the volume linearly
-# #     "height":128,
-# #     "width":128,
-# #     "num_tokens_from_input":None,
-# #     "vector_tokens":True,
-# #     "num_transformer_layers":1,
-# #     "patch_size":8,
-# #     "interpretation_filters":200,
+# input_args = {
+#     "x_timesteps": 12,  # Number of sentinel images
+#     "y_timesteps": 1,  # Number of volume maps
+#     "num_features_to_train": 12,  # Number of sentinel bands
+#     "num_classes": 1,  # We just want to predict the volume linearly
+#     "height":128,
+#     "width":128,
+#     "num_tokens_from_input":None,
+#     "vector_tokens":True,
+#     "num_transformer_layers":6,
+#     "patch_size":12,
+#     "interpretation_method":"dense",
+#     "explode_method":1,
+#     "n_filters":16,
 
-# # }
+# }
 
-# # cnn = CNN(**input_args)
 # transformer = Transformer(#model_arch="transformer",
 #                           **input_args)
 # transformer.model.summary()

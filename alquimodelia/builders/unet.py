@@ -415,21 +415,6 @@ class UNet(CNN):
         result_bn = self.normalization()(result)
         return result_bn
 
-    def classes_collapse(self, outputDeep):
-        if self.classes_method == "Conv":
-            outputDeep = self.Conv(
-                self.num_classes,
-                self.kernel_size,
-                activation=self.activation_end,
-                data_format=self.data_format,
-                padding=self.padding_style,
-            )(outputDeep)
-        elif self.classes_method == "Dense":
-            outputDeep = self.interpretation_layer(outputDeep)
-            # outputDeep = keras.layers.Dense(
-            #     units=self.num_classes, activation=self.activation_end
-            # )(outputDeep)
-        return outputDeep
 
     def define_model(self):
         input_img = self.get_input_layer()
