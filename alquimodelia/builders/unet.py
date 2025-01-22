@@ -472,17 +472,39 @@ class UNet(CNN):
                 )(outputDeep)
 
             else:
+                kernel_tuple=self.kernel_size
+                extra_args = {"padding":self.padding_style}
+                if self.y_height!=self.x_height:
+                    if not isinstance(kernel_tuple, list):
+                        kernel_tuple = [kernel_tuple]
+                    kernel_tuple.append(int(self.x_height/self.y_height))
+                    extra_args["padding"]="valid"
+                    kernel_tuple = tuple(kernel_tuple)
+                if self.y_width!=self.x_width:
+                    if not isinstance(kernel_tuple, list):
+                        kernel_tuple = [kernel_tuple]
+                    kernel_tuple.append(int(self.x_width/self.y_width))
+                    extra_args["padding"]="valid"
+                    kernel_tuple = tuple(kernel_tuple)
+                if self.opposite_data_format()=="channels_first":
+                    kernel_tuple = list(kernel_tuple)
+                    kernel_tuple.reverse()
+                    kernel_tuple = tuple(kernel_tuple)
                 outputDeep = self.Conv(
                     self.y_timesteps,
-                    self.kernel_size,
+                    kernel_tuple,
                     activation=self.activation_end,
                     data_format=self.opposite_data_format(),
-                    padding=self.padding_style,
+                    **extra_args,
                 )(outputDeep)
         # outputDeep = ops.transpose(outputDeep, axes=[0,4,2,3,1])
 
         # new_shape = outputDeep.shape[1:]
         # outputDeep = Reshape((new_shape[1], new_shape[0]))(outputDeep)
+        outputdeep_shape=list(self.model_output_shape[:-1])
+        outputdeep_shape.append(outputDeep.shape[-1])
+        outputdeep_shape=tuple(outputdeep_shape)
+        outputDeep =keras.layers.Reshape(outputdeep_shape)(outputDeep)
 
         # Classes colapse (or expansion)
         outputDeep = self.classes_collapse(outputDeep)
@@ -497,6 +519,16 @@ class UNet(CNN):
             outputDeep = self.Cropping(cropping=((0,0),(self.extra_crop,self.extra_crop),(self.extra_crop,self.extra_crop)))(
                 outputDeep
             )
+        # output_shape = []
+        # if self.y_timesteps>1:
+        #     output_shape.append(self.y_timesteps)
+        # if self.y_height>1:
+        #     output_shape.append(self.y_height)
+        # if self.y_width>1:
+        #     output_shape.append(self.y_width)
+        # output_shape.append(self.num_classes)
+        # output_shape = tuple(output_shape)
+        # outputDeep =keras.layers.Reshape(self.model_output_shape)(outputDeep)
 
         self.output_layer = outputDeep
         return outputDeep
