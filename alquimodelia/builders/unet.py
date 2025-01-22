@@ -486,10 +486,11 @@ class UNet(CNN):
                     kernel_tuple.append(int(self.x_width/self.y_width))
                     extra_args["padding"]="valid"
                     kernel_tuple = tuple(kernel_tuple)
-                if self.opposite_data_format()=="channels_first":
-                    kernel_tuple = list(kernel_tuple)
-                    kernel_tuple.reverse()
-                    kernel_tuple = tuple(kernel_tuple)
+                if isinstance(kernel_tuple, tuple):
+                    if self.opposite_data_format()=="channels_first":
+                        kernel_tuple = list(kernel_tuple)
+                        kernel_tuple.reverse()
+                        kernel_tuple = tuple(kernel_tuple)
                 outputDeep = self.Conv(
                     self.y_timesteps,
                     kernel_tuple,
