@@ -87,6 +87,16 @@ class BaseBuilder:
         **kwargs,
     ):
         # shape (N, T, H, W, C)
+        if input_layer is not None:
+            for id, dim_val in enumerate(input_layer.shape[1:-1]):
+                if id==0:
+                    x_timesteps=dim_val
+                if id==1:
+                    x_height=dim_val
+                if id==0:
+                    x_width=dim_val
+            num_features_to_train=input_layer.shape[-1]
+
         self.x_timesteps = x_timesteps or timesteps
         self.x_height = x_height or height
         self.x_width = x_width or width

@@ -5,6 +5,7 @@ from keras.layers import Activation, Add, Multiply, concatenate
 from keras.src.legacy.backend import int_shape
 
 from alquimodelia.builders.cnn import CNN
+from alquimodelia.builders.fcnn import FCNN
 from alquimodelia.utils import repeat_elem
 
 
@@ -24,6 +25,8 @@ class UNet(CNN):
         pad_temp: bool = True,
         spatial_dropout: bool = True,
         double_interpretation: bool = True,
+        break_image_dims_with_conv: bool = True,
+        merge_dims=None,
         **kwargs,
     ):
         self.n_filters = n_filters
@@ -39,6 +42,8 @@ class UNet(CNN):
         # this variable is useless because this croping method is useless.
         self.pad_temp = pad_temp
         self.extra_crop=None
+        self.break_image_dims_with_conv=break_image_dims_with_conv
+        self.merge_dims=merge_dims
 
         # TODO: study a way to make cropping within the convluition at the end, this way there is less pixels to actully calculate
 
@@ -474,23 +479,30 @@ class UNet(CNN):
             else:
                 kernel_tuple=self.kernel_size
                 extra_args = {"padding":self.padding_style}
-                if self.y_height!=self.x_height:
-                    if not isinstance(kernel_tuple, list):
-                        kernel_tuple = [kernel_tuple]
-                    kernel_tuple.append(int(self.x_height/self.y_height))
-                    extra_args["padding"]="valid"
-                    kernel_tuple = tuple(kernel_tuple)
-                if self.y_width!=self.x_width:
-                    if not isinstance(kernel_tuple, list):
-                        kernel_tuple = [kernel_tuple]
-                    kernel_tuple.append(int(self.x_width/self.y_width))
-                    extra_args["padding"]="valid"
-                    kernel_tuple = tuple(kernel_tuple)
-                if isinstance(kernel_tuple, tuple):
-                    if self.opposite_data_format()=="channels_first":
-                        kernel_tuple = list(kernel_tuple)
-                        kernel_tuple.reverse()
+                if self.break_image_dims_with_conv:
+                    if self.y_height!=self.x_height:
+                        if not isinstance(kernel_tuple, list):
+                            kernel_tuple = [kernel_tuple]
+                        current_x = self.x_height
+                        curr_dim = None
+                        for i,d in enumerate(self.dimension_to_use):
+                            if d =="H":
+                                curr_dim=i
+                        current_x = outputDeep.shape[curr_dim+1]
+                        kernel_tuple.append(int(current_x/self.y_height))
+                        extra_args["padding"]="valid"
                         kernel_tuple = tuple(kernel_tuple)
+                    if self.y_width!=self.x_width:
+                        if not isinstance(kernel_tuple, list):
+                            kernel_tuple = [kernel_tuple]
+                        kernel_tuple.append(int(self.x_width/self.y_width))
+                        extra_args["padding"]="valid"
+                        kernel_tuple = tuple(kernel_tuple)
+                    if isinstance(kernel_tuple, tuple):
+                        if self.opposite_data_format()=="channels_first":
+                            kernel_tuple = list(kernel_tuple)
+                            kernel_tuple.reverse()
+                            kernel_tuple = tuple(kernel_tuple)
                 outputDeep = self.Conv(
                     self.y_timesteps,
                     kernel_tuple,
@@ -503,13 +515,21 @@ class UNet(CNN):
         # new_shape = outputDeep.shape[1:]
         # outputDeep = Reshape((new_shape[1], new_shape[0]))(outputDeep)
         outputdeep_shape=list(self.model_output_shape[:-1])
-        outputdeep_shape.append(outputDeep.shape[-1])
+        outputdeep_shape.append(keras.ops.prod(outputDeep.shape[1:]))
         outputdeep_shape=tuple(outputdeep_shape)
         outputDeep =keras.layers.Reshape(outputdeep_shape)(outputDeep)
 
         # Classes colapse (or expansion)
-        outputDeep = self.classes_collapse(outputDeep)
-
+        if self.classes_method.lower() in ["dense", "conv"]:
+            outputDeep = self.classes_collapse(outputDeep)
+        elif self.classes_method.lower() in ["fcnn"]:
+            fcnn_interpretation = FCNN(input_layer=outputDeep,
+                 y_timesteps=self.y_timesteps, y_height=self.y_height,
+                 y_width=self.y_width,
+                 activation_end=self.activation_end,
+                 num_classes=self.num_classes,
+                 num_sequences=None)
+            outputDeep=fcnn_interpretation.model.layers[-1]
         # TODO: croping should be in a different function to treat output
         if self.padding > 0:
             if self.cropping_method == "crop":
