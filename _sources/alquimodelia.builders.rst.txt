@@ -36,6 +36,14 @@ alquimodelia.builders.lstm module
    :undoc-members:
    :show-inheritance:
 
+alquimodelia.builders.resnet module
+-----------------------------------
+
+.. automodule:: alquimodelia.builders.resnet
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 alquimodelia.builders.transformer module
 ----------------------------------------
 
