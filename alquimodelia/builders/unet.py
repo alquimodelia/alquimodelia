@@ -516,7 +516,7 @@ class UNet(CNN):
         # outputDeep = Reshape((new_shape[1], new_shape[0]))(outputDeep)
         outputdeep_shape=list(self.model_output_shape[:-1])
         outputdeep_shape.append(keras.ops.prod(outputDeep.shape[1:]))
-        outputdeep_shape=tuple(outputdeep_shape)
+        outputdeep_shape=tuple([int(f) for f in outputdeep_shape])
         outputDeep =keras.layers.Reshape(outputdeep_shape)(outputDeep)
 
         # Classes colapse (or expansion)
