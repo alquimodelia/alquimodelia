@@ -473,42 +473,42 @@ class Transformer(SequenceBuilder):
 #     "interpretation_filters":200,
 # }
 
-# input_args = {
-#     "x_timesteps": 12,  # Number of sentinel images
-#     "y_timesteps": 1,  # Number of volume maps
-#     "num_features_to_train": 12,  # Number of sentinel bands
-#     "num_classes": 1,  # We just want to predict the volume linearly
-#     "height":128,
-#     "width":128,
-#     "num_tokens_from_input":None,
-#     "vector_tokens":True,
-#     "num_transformer_layers":6,
-#     "patch_size":8,
-#     "interpretation_method":"dense",
-#     "explode_method":1,
-#     "n_filters":16,
+input_args = {
+    "x_timesteps": 12,  # Number of sentinel images
+    "y_timesteps": 1,  # Number of volume maps
+    "num_features_to_train": 12,  # Number of sentinel bands
+    "num_classes": 1,  # We just want to predict the volume linearly
+    "height":128,
+    "width":128,
+    "num_tokens_from_input":None,
+    "vector_tokens":True,
+    "num_transformer_layers":6,
+    "patch_size":8,
+    "interpretation_method":"dense",
+    "explode_method":1,
+    "n_filters":16,
 
-# }
+}
 
-# input_args = {
-#     "x_timesteps": 12,  # Number of sentinel images
-#     "y_timesteps": 1,  # Number of volume maps
-#     "num_features_to_train": 12,  # Number of sentinel bands
-#     "num_classes": 3,  # We just want to predict the volume linearly
-#     "x_height":150,
-#     "x_width":25,
-#     "y_height":1,
-#     "y_width":1,
-#     "num_tokens_from_input":None,
-#     "vector_tokens":True,
-#     "num_transformer_layers":6,
-#     "patch_size":8,
-#     "interpretation_method":"dense",
-#     "explode_method":1,
-#     "n_filters":16,
+input_args = {
+    "x_timesteps": 12,  # Number of sentinel images
+    "y_timesteps": 1,  # Number of volume maps
+    "num_features_to_train": 12,  # Number of sentinel bands
+    "num_classes": 3,  # We just want to predict the volume linearly
+    "x_height":150,
+    "x_width":25,
+    "y_height":1,
+    "y_width":1,
+    "num_tokens_from_input":None,
+    "vector_tokens":True,
+    "num_transformer_layers":6,
+    "patch_size":8,
+    "interpretation_method":"dense",
+    "explode_method":1,
+    "n_filters":16,
 
-# }
-# transformer = Transformer(#model_arch="transformer",
-#                           **input_args)
-# transformer.model.summary()
-# print("sssss")
+}
+transformer = Transformer(#model_arch="transformer",
+                          **input_args)
+transformer.model.summary()
+print("sssss")
