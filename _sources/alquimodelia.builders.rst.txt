@@ -52,6 +52,14 @@ alquimodelia.builders.transformer module
    :undoc-members:
    :show-inheritance:
 
+alquimodelia.builders.transformer copy module
+---------------------------------------------
+
+.. automodule:: alquimodelia.builders.transformer copy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 alquimodelia.builders.tryouts module
 ------------------------------------
 
