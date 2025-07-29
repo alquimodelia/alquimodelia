@@ -47,8 +47,6 @@ class ModelMagia:
         if len(numbers) > 0:
             interpretation_filters = int(numbers)
             model_kwargs["interpretation_filters"] = interpretation_filters
-        if model_arch == "fcnn":
-            print("sss")
         if len(interpretation_method_name)>0:
             model_kwargs["interpretation_method"] = ModelMagia.registry[interpretation_method_name]
         for name, method in cls.__dict__.items():
