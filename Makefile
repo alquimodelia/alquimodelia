@@ -68,5 +68,5 @@ update:
 build: update check test docs
 	poetry build
 
-release: build
-	poetry release
+release:
+	poetry publish --build

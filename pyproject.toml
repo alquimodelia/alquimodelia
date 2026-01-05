@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "alquimodelia"
-version = "0.0.6"
+version = "0.0.7"
 description = "Keras based model builder"
 authors = ["João Santos <jotaflame@gmail.com>"]
 readme = "README.md"

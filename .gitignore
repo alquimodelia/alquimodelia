@@ -2,3 +2,9 @@
 docs/*
 .vscode*
 old*/*
+dist/*
+build/*
+*.egg-info/
+.pytest_cache/
+__pypackages__/
+.ipynb_checkpoints/
