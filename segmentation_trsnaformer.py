@@ -8,6 +8,7 @@ from keras.layers import Add, Concatenate, Layer
 
 from alquimodelia.builders.base_builder import BaseBuilder
 
+
 def create_vit_segmentation(num_classes):
     input_shape = (224, 224, 3)  # Adjust this based on your desired input size
     

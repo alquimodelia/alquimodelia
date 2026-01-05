@@ -1,6 +1,7 @@
 from functools import cached_property
 
 import keras
+import numpy as np
 
 from alquimodelia.builders.base_builder import SequenceBuilder
 from alquimodelia.utils import count_number_divisions
@@ -15,10 +16,12 @@ class CNN(SequenceBuilder):
         self,
         number_of_conv_layers: int = 0,
         spatial_dropout: bool = False,
+        sklearn_wrapper: bool = False,
         **kwargs,
     ):
         self.spatial_dropout = spatial_dropout
         self._number_of_conv_layers = number_of_conv_layers
+        self.sklearn_wrapper = sklearn_wrapper
         super().__init__(**kwargs)
 
     def model_setup(self):
@@ -54,6 +57,25 @@ class CNN(SequenceBuilder):
                 (self.padding, self.padding),
             )
         self.num_sequences = self.num_sequences or self.number_of_conv_layers
+        self.num_sequences = min(self.num_sequences, self.number_of_conv_layers+1)
+
+        if self.filters is None:
+            # e.g., scale filters by powers of 2, bounded by input/output dimensions
+            in_dim = np.prod(self.model_input_shape)
+            base = 8
+
+            sequence_filters = []
+            for i in range(self.num_sequences):
+                val = max(in_dim, base *(2 ** (i+1)))
+                sequence_filters.append(val)
+
+            # Turn into conv_args list
+            self.sequence_args = [{"filters": f} for f in sequence_filters]
+
+        else:
+            # fallback to SequenceBuilder logic
+            self.set_sequence_filters()
+
 
     @cached_property
     def number_of_conv_layers(self):
@@ -61,6 +83,8 @@ class CNN(SequenceBuilder):
             number_of_layers = []
             study_shape = list(self.model_input_shape)
             study_shape.pop(self.channels_dimension)
+            if len(study_shape) == 0:
+                study_shape = list(self.model_input_shape)
             study_shape = tuple(study_shape)
             for size in study_shape:
                 number_of_layers.append(count_number_divisions(size, 0))
@@ -78,6 +102,7 @@ class CNN(SequenceBuilder):
         max_pool_args=None,
         filter_enlarger=4,
         filter_limit=200,
+        filters=16,
     ):
         """Defines the architecture block for the CNN layer.
 
@@ -106,13 +131,12 @@ class CNN(SequenceBuilder):
         if conv_args is None:
             conv_args = {}
         for k, v in {
-            "filters": 16,
+            "filters": filters,
             "kernel_size": 3,
             "activation": "relu",
         }.items():
             if k not in conv_args:
                 conv_args[k] = v
-
         x = self.Conv(**conv_args)(x)
 
         pool = self.update_kernel(max_pool_args["pool_size"], x.shape)

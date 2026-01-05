@@ -3,7 +3,13 @@ from functools import cached_property
 import keras
 import numpy as np
 from keras import ops
-from keras.layers import BatchNormalization, Dense, Layer, UpSampling2D, Dropout
+from keras.layers import (
+    BatchNormalization,
+    Dense,
+    Dropout,
+    Layer,
+    UpSampling2D,
+)
 from keras.models import Model
 
 
@@ -15,8 +21,9 @@ class BaseBuilder:
 
     def _derive_from_input_layer(self, input_shape=None):
         input_shape = input_shape or ops.shape(self.input_layer)
-        # TODO:
-        pass
+        input_shape = list(input_shape)[1:]  # remove batch size
+        self.model_input_shape = tuple(input_shape)
+
 
     def define_input_layer(self):
         # This is the base for an input layer. It can be overwrite, but it should set this variable
@@ -29,6 +36,13 @@ class BaseBuilder:
     def get_input_layer(self):
         # This is to get the layer to enter the arch, here you can add augmentation or other processing
         input_layer = self.input_layer
+        if hasattr(self, "sklearn_wrapper") and self.sklearn_wrapper:
+            # If this is a sklearn wrapper, we need to reshape the input
+            if len(self.model_input_shape) == 1:
+                # If the input shape is only one dimension, we need to reshape it
+                input_layer = keras.layers.Reshape(
+                    (self.model_input_shape[0], 1)
+                )(input_layer)
         if self.upsampling:
             # TODO: think and set how to get this value
             input_layer = self.UpSampling(
@@ -90,11 +104,11 @@ class BaseBuilder:
         if input_layer is not None:
             for id, dim_val in enumerate(input_layer.shape[1:-1]):
                 if id==0:
-                    x_timesteps=dim_val
+                    x_timesteps=x_timesteps or dim_val
                 if id==1:
-                    x_height=dim_val
-                if id==0:
-                    x_width=dim_val
+                    x_height=x_height or dim_val
+                if id==2:
+                    x_width=x_width or dim_val
             num_features_to_train=input_layer.shape[-1]
 
         self.x_timesteps = x_timesteps or timesteps
@@ -190,8 +204,8 @@ class BaseBuilder:
                 dict_dimension_to_use["B"] = self.num_features_to_train
         self.dimension_to_use = dimension_to_use
         self.dict_dimension_to_use = dict_dimension_to_use
-        hw_count = sum([1 if d in dimension_to_use else 0 for d in ['H', 'W']])
-        t_count = 1 if 'T' in dimension_to_use else 0
+        hw_count = sum([1 if d in dimension_to_use else 0 for d in ["H", "W"]])
+        t_count = 1 if "T" in dimension_to_use else 0
         self.input_num_dims = hw_count + t_count
         return tuple(input_shape)
 
@@ -236,8 +250,8 @@ class BaseBuilder:
 
         self.dimension_to_predict = dimension_to_predict
         self.dict_dimension_to_predict = dict_dimension_to_predict
-        hw_count = sum([1 if d in dimension_to_predict else 0 for d in ['H', 'W']])
-        t_count = 1 if 'T' in dimension_to_predict else 0
+        hw_count = sum([1 if d in dimension_to_predict else 0 for d in ["H", "W"]])
+        t_count = 1 if "T" in dimension_to_predict else 0
         self.output_num_dims = hw_count + t_count
 
         return tuple(output_shape)
@@ -297,6 +311,20 @@ class SequenceBuilder(BaseBuilder):
             kernel = kernel[0]
         return kernel
 
+    def set_sequence_filters(self):
+        filters = self.filters
+        if filters is None:
+            self.sequence_filters = []
+            return
+        if isinstance(filters, list):
+            assert len(filters) == self.num_sequences
+            sequence_filters = filters
+        else:
+            sequence_filters = []
+            for i in range(self.num_sequences):
+                sequence_filters.append(filters * (2 ** i))
+        self.sequence_filters = sequence_filters
+
     def arch_block(self):
         # Defines the arch block to be used on repetition
         raise NotImplementedError
@@ -308,9 +336,13 @@ class SequenceBuilder(BaseBuilder):
         input_layer = self.get_input_layer()
         sequence_layer = input_layer
         sequence_args = self.sequence_args
+        self.set_sequence_filters()
         if isinstance(self.sequence_args, list):
             assert len(self.sequence_args) == self.num_sequences
-        elif isinstance(self.sequence_args, dict):
+        if len(sequence_args) == 0:
+            if len(self.sequence_filters) != 0:
+                sequence_args = [{"filters": v} for v in self.sequence_filters]
+        elif isinstance(sequence_args, dict):
             sequence_args = [sequence_args] * self.num_sequences
         for i in range(self.num_sequences):
             sequence_layer = self.arch_block(
@@ -329,6 +361,7 @@ class SequenceBuilder(BaseBuilder):
         units_in=None,
         filters_out=None,
         double_dense=True,
+        interpretation: bool = False,
     ):
         """Defines the architecture block for the dense layer.
 
@@ -356,15 +389,15 @@ class SequenceBuilder(BaseBuilder):
         if dense_args is None:
             dense_args = default_dense_args
         if isinstance(dense_args, list):
-            dense_args1 = default_dense_args
-            dense_args2 = default_dense_args
+            dense_args1 = default_dense_args.copy()
+            dense_args2 = default_dense_args.copy()
             dense_args1.update(dense_args[0])
             units_in = dense_args[0].get("units", None)
             dense_args2.update(dense_args[1])
         else:
             default_dense_args.update(dense_args)
-            dense_args1 = default_dense_args
-            dense_args2 = default_dense_args
+            dense_args1 = default_dense_args.copy()
+            dense_args2 = default_dense_args.copy()
 
         filters_out = dense_args2.pop("units", filters_out)
         # filters_out = filters_out or self.num_classes
@@ -373,21 +406,26 @@ class SequenceBuilder(BaseBuilder):
                 filters_out = np.prod(self.model_output_shape)
             else:
                 filters_out = self.model_output_shape[-1]
-        units_in = units_in or self.interpretation_filters
+        if interpretation:
+            units_in = self.interpretation_filters or units_in
+
         if units_in is None:
             units_in = dense_args1.pop(
                 "units",
                 min(filters_out * filter_enlarger, filter_limit),
             )
+
         if double_dense:
             if units_in > x.shape[-1]:
                 out_layer_shape = list(x.shape[1:])
                 out_layer_shape[-1] = filters_out
                 x = keras.layers.Flatten()(x)
-                filters_out = np.prod(self.model_output_shape)
-            x = Dense(units_in, **dense_args1)(x)
+                if interpretation:
+                    filters_out = np.prod(self.model_output_shape)
+            dense_args1["units"] = int(units_in)
+            x = Dense(**dense_args1)(x)
             x = Dropout(self.dropout_rate)(x)
-        x = Dense(filters_out, **dense_args2)(x)
+        x = Dense(int(filters_out), **dense_args2)(x)
         x = Dropout(self.dropout_rate)(x)
         if out_layer_shape is not None:
             x = keras.layers.Reshape(out_layer_shape)(x)
@@ -446,6 +484,7 @@ class SequenceBuilder(BaseBuilder):
             output_layer,
             dense_args=dense_args,
             double_dense=double_interpretation,
+            interpretation=True,
         )
         return output_layer
 
@@ -467,7 +506,7 @@ class SequenceBuilder(BaseBuilder):
     @cached_property
     def conv_dimension(self):
         # 1D, 2D, or 3D convulutions
-        return len(self.model_input_shape) - 1
+        return max(len(self.model_input_shape) - 1, 1)
 
     def classes_collapse(self, outputDeep):
         if self.classes_method.lower() == "conv":

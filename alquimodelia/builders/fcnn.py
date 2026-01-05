@@ -19,6 +19,7 @@ class FCNN(SequenceBuilder):
         division_base_power: int = 2,
         division_space_method="max",  # min mean
         division_per_dim=True,
+        cutoff_filters: bool = True,
         **kwargs,
     ):
         if num_sequences is not None:
@@ -27,6 +28,7 @@ class FCNN(SequenceBuilder):
         self.log_div_filters = []
         self.division_per_dim = division_per_dim
         self.division_space_method = getattr(np, division_space_method)
+        self.cutoff_filters = cutoff_filters
         super().__init__(
             num_sequences=num_sequences,
             flatten_input=flatten_input,
@@ -89,33 +91,25 @@ class FCNN(SequenceBuilder):
         if self.division_per_dim:
             if self.number_division > 2:
                 for i in range(0, (self.number_division - 2), 2):
-                    self.sequence_args.append(dimension_on_output* (self.division_base_power ** (i + 2))
-                        # {
-                        #     "dense_args": [
-                        #         {
-                        #             "units": dimension_on_output
-                        #             * (self.division_base_power ** (i + 3))
-                        #         },
-                        #         {
-                        #             "units": dimension_on_output
-                        #             * (self.division_base_power ** (i + 2))
-                        #         },
-                        #     ]
-                        # }
-                    )
+                    self.sequence_args.append(dimension_on_output* (self.division_base_power ** (i + 2)))
                     self.sequence_args.append(dimension_on_output* (self.division_base_power ** (i + 3)))
 
                 self.sequence_args.reverse()
-                if max(self.sequence_args)>dimension_on_input:
+                if self.cutoff_filters or self.filters is not None:
+                    cutoff_filters = self.filters or dimension_on_input
+                    if max(self.sequence_args)>dimension_on_input:
 
-                    max_sequence = min(dimension_on_input, max(self.sequence_args))
-                    min_sequence = max(dimension_on_output, min(self.sequence_args))
-                    # This is repeated so we have what would be the second after the dimension in
-                    sequence_args = min_sequence+(((self.sequence_args-min(self.sequence_args))*(max_sequence-min_sequence))/(max(self.sequence_args)-min(self.sequence_args)))
-                    sequence_args = [int(f) for f in sequence_args]
-                    max_sequence = sequence_args[1]
-                    self.sequence_args = min_sequence+(((self.sequence_args-min(self.sequence_args))*(max_sequence-min_sequence))/(max(self.sequence_args)-min(self.sequence_args)))
-                    self.sequence_args = [int(f) for f in self.sequence_args]
+                        max_sequence = min(cutoff_filters, max(self.sequence_args))
+                        min_sequence = max(dimension_on_output, min(self.sequence_args))
+                        # This is repeated so we have what would be the second after the dimension in
+                        sequence_args = min_sequence+(((self.sequence_args-min(self.sequence_args))*(max_sequence-min_sequence))/(max(self.sequence_args)-min(self.sequence_args)))
+                        sequence_args = sequence_args.round().astype(int)
+                        if self.filters is None:
+                            max_sequence = sequence_args[1]
+                            self.sequence_args = min_sequence+(((self.sequence_args-min(self.sequence_args))*(max_sequence-min_sequence))/(max(self.sequence_args)-min(self.sequence_args)))
+                            self.sequence_args = self.sequence_args.round().astype(int)
+                        else:
+                            self.sequence_args = sequence_args
 
                 sequence_args = []
                 for i in range(0, len(self.sequence_args), 2):
@@ -141,17 +135,32 @@ class FCNN(SequenceBuilder):
 
         else:
             if self.number_of_log_divisions > 0:
+                sequence_args = []
+                for i in range(0, self.number_of_log_divisions, 2):
+                    sequence_args.append(
+                        dimension_on_output
+                        * (self.division_base_power ** (i + 2))
+                    )
+                    sequence_args.append(
+                        dimension_on_output
+                        * (self.division_base_power ** (i + 3))
+                    )
+                sequence_args = np.array(sequence_args)
+                if self.filters is not None:
+                    min_val= np.min(sequence_args)
+                    max_val = np.max(sequence_args)
+                    new_max = self.filters
+                    sequence_args = min_val + ((sequence_args - min_val) * (new_max - min_val)) / (max_val - min_val)
+                    sequence_args = sequence_args.round().astype(int)
                 for i in range(0, self.number_of_log_divisions, 2):
                     self.sequence_args.append(
                         {
                             "dense_args": [
                                 {
-                                    "units": dimension_on_output
-                                    * (self.division_base_power ** (i + 3))
+                                    "units": sequence_args[i + 1]
                                 },
                                 {
-                                    "units": dimension_on_output
-                                    * (self.division_base_power ** (i + 2))
+                                    "units": sequence_args[i]
                                 },
                             ]
                         }
@@ -161,6 +170,7 @@ class FCNN(SequenceBuilder):
                 self.division_base_power ** (1)
             )
             value_to_use = int((last_log_value - dimension_on_output) / 2)
+            value_to_use = max(value_to_use, 1)
             if self.num_sequences < 1:
                 value_to_use = min(200, value_to_use)
             value_to_use = self.interpretation_filters or value_to_use

@@ -54,8 +54,10 @@ check:
 	poetry run ruff .
 
 lint-fix:
-	poetry run isort .
-	poetry run ruff . --fix
+	poetry run ruff check --fix alquimodelia/
+	poetry run ruff format alquimodelia/
+	poetry run ruff check --fix tests/
+	poetry run ruff format tests/
 
 update:
 	poetry update

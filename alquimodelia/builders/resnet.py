@@ -1,12 +1,6 @@
-from typing import Any, Dict
 
-import keras
-from keras.layers import Activation, Add, Multiply, concatenate
-from keras.src.legacy.backend import int_shape
 
 from alquimodelia.builders.unet import UNet
-from alquimodelia.utils import repeat_elem
-
 
 
 class ResNet(UNet):

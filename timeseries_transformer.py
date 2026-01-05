@@ -2,10 +2,8 @@ import os
 
 os.environ["KERAS_BACKEND"] = "torch"  # @param ["tensorflow", "jax", "torch"]
 import keras
-from keras import layers, ops
 import numpy as np
-import keras
-from keras import layers
+from keras import layers, ops
 
 
 def transformer_encoder(inputs, head_size, num_heads, ff_dim, dropout=0):

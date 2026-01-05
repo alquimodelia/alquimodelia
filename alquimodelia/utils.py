@@ -51,5 +51,5 @@ def count_number_divisions(size: int, count: int, by: int = 2, limit: int = 2):
                 size / by, count + 1, by=by, limit=limit
             )
     else:
-        count = count - 1
+        count = count
     return count

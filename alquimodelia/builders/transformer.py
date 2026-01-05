@@ -1,17 +1,16 @@
 import os
 
 os.environ["KERAS_BACKEND"] = "torch"
+import math
 from inspect import signature
 
 import keras
 import numpy as np
 from keras import layers, ops
-from keras.layers import Add, Concatenate, Layer
-import math
+from keras.layers import Add, Layer
 
-from alquimodelia.builders.base_builder import BaseBuilder, SequenceBuilder
+from alquimodelia.builders.base_builder import SequenceBuilder
 from alquimodelia.builders.cnn import CNN
-from alquimodelia.builders.fcnn import FCNN
 
 # TODO: it all
 # This class should be able to build the 3 archs in: https://keras.io/examples/vision/image_classification_using_global_context_vision_transformer/

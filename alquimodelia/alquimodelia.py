@@ -1,6 +1,15 @@
 import inspect
 
-from alquimodelia.builders import CNN, FCNN, LSTM, Transformer, UNet, AttResUNet, ResUNet, ResNet
+from alquimodelia.builders import (
+    CNN,
+    FCNN,
+    LSTM,
+    AttResUNet,
+    ResNet,
+    ResUNet,
+    Transformer,
+    UNet,
+)
 from alquimodelia.builders.base_builder import SequenceBuilder
 
 
@@ -13,7 +22,7 @@ class ModelMagia:
     def __new__(cls, model_arch, **kwargs):
         # Dynamically create an instance of the specified model class
         model_arch = model_arch.lower()
-        num_sequences = 1
+        num_sequences = kwargs.get("num_sequences", 1)
         if "vanilla" in model_arch:
             model_arch = model_arch.replace("vanilla", "")
             num_sequences = 1

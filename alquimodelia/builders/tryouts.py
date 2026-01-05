@@ -3,9 +3,7 @@ import os
 os.environ["KERAS_BACKEND"] = "torch"  # @param ["tensorflow", "jax", "torch"]
 from alquimodelia.builders.fcnn import FCNN
 from alquimodelia.builders.lstm import LSTM
-from alquimodelia.builders.unet import UNet
 from alquimodelia.builders.resnet import ResNet
-
 
 # mm = UNet(
 #     x_timesteps=16,
