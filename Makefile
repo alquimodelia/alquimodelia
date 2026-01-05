@@ -50,8 +50,11 @@ test-coverage:
 	poetry run pytest --cov=$(PROJECT) ${TEST_PATH} --cov-report term-missing
 
 check:
-	poetry run isort --check --diff .
-	poetry run ruff .
+	poetry run ruff check alquimodelia/
+	poetry run ruff format --check alquimodelia/
+	poetry run ruff check tests/
+	poetry run ruff format --check tests/
+
 
 lint-fix:
 	poetry run ruff check --fix alquimodelia/
